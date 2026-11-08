@@ -92,6 +92,7 @@ app.post("/api/games", wrap((req, res) => {
   for (const f of GAME_FIELDS) g[f] = req.body[f] === "" || req.body[f] === undefined ? null : req.body[f];
   g.name = String(g.name || "").trim();
   if (!g.name) throw bad("Game name is required");
+  g.year = parseYear(g.year);
   if (g.bgg_id && db.prepare("SELECT 1 FROM games WHERE bgg_id = ?").get(g.bgg_id)) {
     throw bad("That game is already in the collection");
   }
@@ -101,6 +102,23 @@ app.post("/api/games", wrap((req, res) => {
     `INSERT INTO games (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`
   ).run(...GAME_FIELDS.map((f) => g[f]), parentId);
   res.status(201).json(db.prepare("SELECT * FROM games WHERE id = ?").get(r.lastInsertRowid));
+}));
+
+function parseYear(v) {
+  if (v === "" || v == null) return null;
+  const y = Number(v);
+  if (!Number.isInteger(y) || y < -4000 || y > 2200) throw bad("Year must be a whole year, like 2021");
+  return y;
+}
+
+// Edit a game's or an expansion's name and release year.
+app.put("/api/games/:id", wrap((req, res) => {
+  const game = db.prepare("SELECT id FROM games WHERE id = ?").get(req.params.id);
+  if (!game) return res.status(404).json({ error: "That game no longer exists" });
+  const name = String(req.body.name || "").trim();
+  if (!name) throw bad("Name is required");
+  db.prepare("UPDATE games SET name = ?, year = ? WHERE id = ?").run(name, parseYear(req.body.year), game.id);
+  res.json(db.prepare("SELECT * FROM games WHERE id = ?").get(game.id));
 }));
 
 app.delete("/api/games/:id", wrap((req, res) => {

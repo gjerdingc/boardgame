@@ -1,5 +1,5 @@
 const PALETTE = ["#f4b860", "#7bd389", "#6cb4ee", "#e76f51", "#c792ea", "#4dd0c8", "#ff8fab", "#f9e07f"];
-const state = { players: [], games: [], plays: [], editingId: null, openExpansionsFor: null, bggExpansions: {} };
+const state = { players: [], games: [], plays: [], editingId: null, openExpansionsFor: null, bggExpansions: {}, editingGameId: null };
 const $ = (sel) => document.querySelector(sel);
 
 function toast(msg, isError = false) {
@@ -62,7 +62,7 @@ function renderExpansionPicks(checked = readExpansionPicks()) {
   box.hidden = !exps.length;
   box.innerHTML = exps.length
     ? `<div class="exp-picks-label">Expansions used</div><div class="exp-picks-list">${exps
-        .map((x) => `<label class="exp-pick"><input type="checkbox" value="${x.id}" ${checked.has(String(x.id)) ? "checked" : ""}>${esc(shortExpName(x.name, base.name))}</label>`)
+        .map((x) => `<label class="exp-pick"><input type="checkbox" value="${x.id}" ${checked.has(String(x.id)) ? "checked" : ""}>${esc(shortExpName(x.name, base.name))}${x.year ? ` <span class="muted">${x.year}</span>` : ""}</label>`)
         .join("")}</div>`
     : "";
 }
@@ -208,7 +208,11 @@ $("#plays-list").addEventListener("click", async (e) => {
 
 // ---------- Games ----------
 const baseGames = () => state.games.filter((g) => !g.parent_id);
-const expansionsOf = (id) => state.games.filter((g) => g.parent_id === id);
+// Expansions of a game in release order (unknown years last), then by name.
+const expansionsOf = (id) =>
+  state.games
+    .filter((g) => g.parent_id === id)
+    .sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999) || a.name.localeCompare(b.name));
 
 function gameMeta(g) {
   return [
@@ -222,7 +226,19 @@ function gameMeta(g) {
 function gameButtons(g) {
   return `${g.bgg_id ? `<a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${g.bgg_id}" target="_blank" rel="noopener">BGG</a>
     <button class="btn ghost small" data-refresh-game="${g.id}">Refresh</button>` : ""}
+    <button class="btn ghost small" data-edit-game="${g.id}">Edit</button>
     <button class="btn danger small" data-del-game="${g.id}">Delete</button>`;
+}
+
+// Inline form for changing a game's or expansion's name and release year.
+function editGameRow(g, sub) {
+  return `
+    <form class="item edit-row ${sub ? "sub" : ""}" data-edit-game-form="${g.id}">
+      <label class="grow">Name<input type="text" name="name" required value="${esc(g.name)}"></label>
+      <label class="year-field">Release year<input type="number" name="year" value="${g.year ?? ""}" placeholder="e.g. 2021"></label>
+      <button class="btn small" type="submit">Save</button>
+      <button class="btn ghost small" type="button" data-cancel-edit-game>Cancel</button>
+    </form>`;
 }
 
 // Panel for adding expansions under a base game: BGG's list of known expansions + manual entry.
@@ -247,6 +263,7 @@ function renderExpansionPanel(base) {
     <div class="exp-panel">
       <form class="row" data-exp-manual="${base.id}">
         <label>Expansion name<input type="text" name="name" required placeholder="e.g. European Expansion"></label>
+        <label class="year-field">Release year<input type="number" name="year" placeholder="e.g. 2021"></label>
         <button class="btn small" type="submit">Add expansion</button>
       </form>
       <div class="bgg-results">${suggestions}</div>
@@ -262,7 +279,7 @@ function renderGames() {
           const open = state.openExpansionsFor === g.id;
           return `
       <div class="game-group">
-        <div class="item">
+        ${state.editingGameId === g.id ? editGameRow(g, false) : `<div class="item">
           ${thumb(g.id, g.thumbnail || g.image, g.name)}
           <div class="grow">
             <b>${esc(g.name)}${g.year ? ` <span class="muted" style="font-weight:400">(${g.year})</span>` : ""}</b>
@@ -270,13 +287,13 @@ function renderGames() {
           </div>
           <button class="btn ghost small ${open ? "active" : ""}" data-toggle-exp="${g.id}">+ Expansion</button>
           ${gameButtons(g)}
-        </div>
-        ${exps.map((x) => `
+        </div>`}
+        ${exps.map((x) => state.editingGameId === x.id ? editGameRow(x, true) : `
           <div class="item sub">
             ${thumb(x.id, x.thumbnail || x.image, shortExpName(x.name, g.name))}
             <div class="grow">
               <b>${esc(shortExpName(x.name, g.name))}${x.year ? ` <span class="muted" style="font-weight:400">(${x.year})</span>` : ""}</b>
-              <div class="muted" style="font-size:.85rem">Expansion · ${gameMeta(x)}</div>
+              <div class="muted" style="font-size:.85rem">Expansion · ${x.year ? "" : "release year unknown · "}${gameMeta(x)}</div>
             </div>
             ${gameButtons(x)}
           </div>`).join("")}
@@ -299,7 +316,13 @@ async function loadBggExpansions(base) {
 }
 
 $("#games-list").addEventListener("click", async (e) => {
-  const { delGame, refreshGame, toggleExp, addExpBgg } = e.target.dataset;
+  const { delGame, refreshGame, toggleExp, addExpBgg, editGame } = e.target.dataset;
+  if (editGame || "cancelEditGame" in e.target.dataset) {
+    state.editingGameId = editGame ? Number(editGame) : null;
+    renderGames();
+    if (editGame) document.querySelector(`[data-edit-game-form="${editGame}"] input[name=year]`)?.focus();
+    return;
+  }
   try {
     if (toggleExp) {
       const id = Number(toggleExp);
@@ -340,12 +363,25 @@ $("#games-list").addEventListener("click", async (e) => {
 });
 
 $("#games-list").addEventListener("submit", async (e) => {
+  const editId = e.target.dataset.editGameForm;
+  if (editId) {
+    e.preventDefault();
+    try {
+      await api(`api/games/${editId}`, { method: "PUT", body: { name: e.target.name.value, year: e.target.year.value } });
+      state.editingGameId = null;
+      toast("Saved");
+      await loadAll();
+    } catch (err) {
+      toast(err.message, true);
+    }
+    return;
+  }
   const baseId = e.target.dataset.expManual;
   if (!baseId) return;
   e.preventDefault();
   try {
     const name = e.target.name.value.trim();
-    await api("api/games", { method: "POST", body: { name, parent_id: Number(baseId) } });
+    await api("api/games", { method: "POST", body: { name, year: e.target.year.value, parent_id: Number(baseId) } });
     toast(`${name} added`);
     await loadAll();
     document.querySelector(`[data-exp-manual="${baseId}"] input`)?.focus();
