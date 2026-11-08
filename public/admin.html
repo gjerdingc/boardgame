@@ -35,11 +35,18 @@
         <div class="row" style="margin-bottom:16px">
           <label>Game<select name="game_id" id="play-game" required></select></label>
           <label style="flex:0 1 200px">Date<input type="date" name="played_at" id="play-date" required></label>
+          <div class="dur-field">
+            <span class="dur-label">How long it took (optional)</span>
+            <div class="dur-inputs">
+              <input type="number" name="dur_h" min="0" max="48" inputmode="numeric" placeholder="0" aria-label="Hours"><span>h</span>
+              <input type="number" name="dur_m" min="0" inputmode="numeric" placeholder="0" aria-label="Minutes"><span>min</span>
+            </div>
+          </div>
         </div>
         <div id="play-expansions" class="exp-picks" hidden></div>
         <p class="muted" style="margin:0 0 10px;font-size:.88rem">Tick who played, then mark the winner(s). Scores are optional.</p>
         <div class="player-picks" id="play-players"></div>
-        <label style="margin-top:16px">Notes (optional)<input type="text" name="notes" placeholder="Expansion used, house rules, memorable moments…"></label>
+        <label style="margin-top:16px">Notes (optional)<input type="text" name="notes" placeholder="House rules, memorable moments…"></label>
         <div class="row" style="margin-top:16px">
           <button class="btn" type="submit" id="play-submit">Save play</button>
           <button class="btn ghost" type="button" id="play-cancel" hidden>Cancel editing</button>

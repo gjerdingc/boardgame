@@ -219,7 +219,15 @@ function validatePlay(body) {
   for (const id of expansions) {
     if (!isOwnExpansion.get(id, game_id)) throw bad("One of the ticked expansions doesn't belong to this game");
   }
-  return { game_id, played_at, notes: notes ? String(notes) : null, players, expansions };
+  let duration = body.duration_min;
+  if (duration === "" || duration == null || Number(duration) === 0) duration = null;
+  else {
+    duration = Number(duration);
+    if (!Number.isInteger(duration) || duration < 1 || duration > 48 * 60) {
+      throw bad("Duration must be between 1 minute and 48 hours");
+    }
+  }
+  return { game_id, played_at, notes: notes ? String(notes) : null, players, expansions, duration };
 }
 
 function savePlayExpansions(playId, expansions) {
@@ -240,8 +248,8 @@ function savePlayPlayers(playId, players) {
 app.post("/api/plays", wrap((req, res) => {
   const play = validatePlay(req.body);
   const id = tx(() => {
-    const r = db.prepare("INSERT INTO plays (game_id, played_at, notes) VALUES (?, ?, ?)")
-      .run(play.game_id, play.played_at, play.notes);
+    const r = db.prepare("INSERT INTO plays (game_id, played_at, notes, duration_min) VALUES (?, ?, ?, ?)")
+      .run(play.game_id, play.played_at, play.notes, play.duration);
     savePlayPlayers(r.lastInsertRowid, play.players);
     savePlayExpansions(r.lastInsertRowid, play.expansions);
     return r.lastInsertRowid;
@@ -256,8 +264,8 @@ app.put("/api/plays/:id", wrap((req, res) => {
   }
   const play = validatePlay(req.body);
   tx(() => {
-    db.prepare("UPDATE plays SET game_id = ?, played_at = ?, notes = ? WHERE id = ?")
-      .run(play.game_id, play.played_at, play.notes, id);
+    db.prepare("UPDATE plays SET game_id = ?, played_at = ?, notes = ?, duration_min = ? WHERE id = ?")
+      .run(play.game_id, play.played_at, play.notes, play.duration, id);
     savePlayPlayers(id, play.players);
     savePlayExpansions(id, play.expansions);
   });
@@ -400,8 +408,14 @@ app.get("/api/collection/:id", wrap((req, res) => {
            (SELECT COUNT(*) FROM play_expansions pe WHERE pe.expansion_id = g.id) AS plays
     FROM games g WHERE g.parent_id = ? ORDER BY COALESCE(g.year, 9999), g.name COLLATE NOCASE`).all(game.id);
   const summary = db.prepare(`
-    SELECT COUNT(*) AS plays, MIN(played_at) AS first_played, MAX(played_at) AS last_played
+    SELECT COUNT(*) AS plays, MIN(played_at) AS first_played, MAX(played_at) AS last_played,
+           ROUND(AVG(duration_min)) AS avg_duration, COUNT(duration_min) AS timed_plays,
+           MIN(duration_min) AS fastest, MAX(duration_min) AS longest
     FROM plays WHERE game_id = ?`).get(game.id);
+  Object.assign(game, {
+    avg_duration: summary.avg_duration, timed_plays: summary.timed_plays,
+    fastest: summary.fastest, longest: summary.longest,
+  });
   game.plays = summary.plays;
   game.first_played = summary.first_played;
   game.last_played = summary.last_played;

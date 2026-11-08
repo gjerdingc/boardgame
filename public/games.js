@@ -119,6 +119,7 @@ function detail(g) {
       <section>
         <h3>Our record</h3>
         <p class="muted">Played ${g.plays} time${g.plays === 1 ? "" : "s"}${g.last_played ? `, most recently ${relDate(g.last_played).toLowerCase()}` : ""}.
+        ${g.timed_plays ? `It usually takes us about <b>${fmtDuration(g.avg_duration)}</b>${g.playing_time ? ` (the box says ${timeText(g.playing_time)})` : ""}${g.timed_plays > 1 && g.fastest !== g.longest ? `, from ${fmtDuration(g.fastest)} to ${fmtDuration(g.longest)}` : ""}.` : ""}
         ${g.champion ? `Reigning champion: <b class="champ-name"><span class="dot" style="background:${esc(g.champion.color)}"></span>${esc(g.champion.name)}</b> ♛` : ""}</p>
         <div class="record-list">${g.results.map((r) => `
           <div class="record">

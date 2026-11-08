@@ -77,7 +77,7 @@ function renderRecent(recent) {
       <div class="play-row">
         ${thumb(p.game_id, p.thumbnail || p.image, p.game_name)}
         <div style="min-width:0">
-          <div class="play-top"><b>${esc(p.game_name)}</b><time datetime="${esc(p.played_at)}">${relDate(p.played_at)}</time></div>
+          <div class="play-top"><b>${esc(p.game_name)}</b><time datetime="${esc(p.played_at)}">${relDate(p.played_at)}${p.duration_min ? ` · ⏱ ${fmtDuration(p.duration_min)}` : ""}</time></div>
           ${p.expansions.length ? `<div class="exp-line">+ ${p.expansions.map((x) => esc(shortExpName(x.name, p.game_name))).join(", ")}</div>` : ""}
           <div class="chips">${p.players
             .map((pl) => `<span class="chip ${pl.winner ? "win" : ""}"><span class="dot" style="background:${esc(pl.color)}"></span>${pl.winner ? "♛ " : ""}${esc(pl.name)}${pl.score != null ? ` · ${pl.score}` : ""}</span>`)

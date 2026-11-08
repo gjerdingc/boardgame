@@ -493,3 +493,9 @@ details[open] summary { margin-bottom: 12px; }
 .corner-link.games-link { bottom: 70px; }
 .panel h2 small a { color: var(--gold); text-decoration: none; font-weight: 600; }
 .panel h2 small a:hover { text-decoration: underline; }
+
+/* Play duration */
+.dur-field { display: grid; gap: 6px; flex: 0 1 230px; }
+.dur-label { font-size: 0.88rem; color: var(--muted); }
+.dur-inputs { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.dur-inputs input[type="number"] { width: 70px; }

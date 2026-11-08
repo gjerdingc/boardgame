@@ -72,6 +72,12 @@ if (!gameColumns.includes("parent_id")) {
   db.exec("ALTER TABLE games ADD COLUMN parent_id INTEGER REFERENCES games(id) ON DELETE CASCADE");
 }
 
+// How long a play took, in minutes (optional).
+const playColumns = db.prepare("PRAGMA table_info(plays)").all().map((c) => c.name);
+if (!playColumns.includes("duration_min")) {
+  db.exec("ALTER TABLE plays ADD COLUMN duration_min INTEGER");
+}
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_games_parent ON games(parent_id);
 

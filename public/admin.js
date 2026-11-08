@@ -109,6 +109,8 @@ function startEdit(play) {
   const form = $("#play-form");
   form.game_id.value = String(play.game_id);
   form.played_at.value = play.played_at;
+  form.dur_h.value = play.duration_min ? Math.floor(play.duration_min / 60) || "" : "";
+  form.dur_m.value = play.duration_min ? play.duration_min % 60 || "" : "";
   form.notes.value = play.notes || "";
   renderPlayForm(
     new Map(play.players.map((p) => [String(p.player_id), { winner: p.winner, score: p.score ?? "" }])),
@@ -121,6 +123,8 @@ function startEdit(play) {
 function resetPlayForm({ keepPlayers }) {
   const form = $("#play-form");
   form.notes.value = "";
+  form.dur_h.value = "";
+  form.dur_m.value = "";
   if (state.editingId) {
     form.game_id.value = "";
     form.played_at.value = today();
@@ -153,7 +157,11 @@ $("#play-form").addEventListener("submit", async (e) => {
   const form = e.target;
   const players = [...readPicks()].map(([id, p]) => ({ player_id: Number(id), winner: p.winner, score: p.score }));
   if (players.length && !players.some((p) => p.winner) && !confirm("No winner marked. Save anyway (everyone lost)?")) return;
+  const h = Number(form.dur_h.value || 0);
+  const m = Number(form.dur_m.value || 0);
+  if (h < 0 || m < 0 || !Number.isFinite(h + m)) return toast("Duration can't be negative", true);
   const body = {
+    duration_min: Math.round(h * 60 + m) || null,
     game_id: Number(form.game_id.value),
     played_at: form.played_at.value,
     notes: form.notes.value,
@@ -180,7 +188,7 @@ function renderPlays() {
       <div class="item ${p.id === state.editingId ? "editing" : ""}" data-play-id="${p.id}">
         ${thumb(p.game_id, p.thumbnail, p.game_name)}
         <div class="grow">
-          <b>${esc(p.game_name)} <span class="muted" style="font-weight:400">· ${fmtDate(p.played_at)}</span></b>
+          <b>${esc(p.game_name)} <span class="muted" style="font-weight:400">· ${fmtDate(p.played_at)}${p.duration_min ? ` · ⏱ ${fmtDuration(p.duration_min)}` : ""}</span></b>
           ${p.expansions.length ? `<div class="exp-line">+ ${p.expansions.map((x) => esc(shortExpName(x.name, p.game_name))).join(", ")}</div>` : ""}
           <div class="chips">${p.players.map((pl) => `<span class="chip ${pl.winner ? "win" : ""}"><span class="dot" style="background:${esc(pl.color)}"></span>${pl.winner ? "♛ " : ""}${esc(pl.name)}${pl.score != null ? ` · ${pl.score}` : ""}</span>`).join("")}</div>
           ${p.notes ? `<div class="muted" style="font-size:.85rem;margin-top:4px">${esc(p.notes)}</div>` : ""}

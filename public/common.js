@@ -31,6 +31,15 @@ function relDate(iso) {
   return fmtDate(iso, { day: "numeric", month: "short", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
 }
 
+// 45 -> "45 min", 90 -> "1 h 30 min", 120 -> "2 h"
+function fmtDuration(min) {
+  if (!min) return "";
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  if (!h) return `${m} min`;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
 function initial(name) {
   return esc((name || "?").trim().charAt(0).toUpperCase());
 }
