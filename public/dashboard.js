@@ -152,7 +152,7 @@ function render(stats) {
         <section class="panel"><h2>Recent plays</h2>${renderRecent(stats.recent.slice(0, 8))}</section>
       </div>
       <div class="stack">
-        <section class="panel"><h2>Most played <small>${stats.totals.games} games in the collection</small></h2>${renderShelf(stats.games)}</section>
+        <section class="panel"><h2>Most played <small><a href="games">Browse all ${stats.totals.games} games →</a></small></h2>${renderShelf(stats.games)}</section>
         ${renderMonthly(stats.monthly)}
         ${renderMatrix(stats)}
       </div>

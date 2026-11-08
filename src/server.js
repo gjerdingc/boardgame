@@ -361,6 +361,62 @@ function clearCover(id) {
   for (const f of [`${id}.img`, `${id}.img.type`]) fs.rmSync(path.join(COVER_DIR, f), { force: true });
 }
 
+// ---------- Collection browser (read-only, for guests) ----------
+
+// Champion of a game = most wins, ties broken by win rate.
+function championOf(gameId) {
+  return db.prepare(`
+    SELECT pl.id, pl.name, pl.color, SUM(pp.winner) AS wins, COUNT(*) AS plays
+    FROM play_players pp JOIN plays p ON p.id = pp.play_id JOIN players pl ON pl.id = pp.player_id
+    WHERE p.game_id = ?
+    GROUP BY pl.id HAVING wins > 0
+    ORDER BY wins DESC, CAST(wins AS REAL) / plays DESC, pl.name LIMIT 1`).get(gameId) || null;
+}
+
+app.get("/api/collection", wrap((req, res) => {
+  const games = db.prepare(`
+    SELECT g.id, g.name, g.year, g.edition, g.bgg_id, g.image, g.thumbnail, g.min_players, g.max_players,
+           g.playing_time, g.min_age, g.rating, g.weight, g.categories, g.designers, g.created_at,
+           COUNT(p.id) AS plays, MAX(p.played_at) AS last_played
+    FROM games g LEFT JOIN plays p ON p.game_id = g.id
+    WHERE g.parent_id IS NULL
+    GROUP BY g.id ORDER BY g.name COLLATE NOCASE`).all();
+  const exps = db.prepare(`
+    SELECT id, parent_id, name, year, edition FROM games WHERE parent_id IS NOT NULL
+    ORDER BY COALESCE(year, 9999), name COLLATE NOCASE`).all();
+  for (const g of games) {
+    g.expansions = exps.filter((x) => x.parent_id === g.id).map(({ parent_id, ...x }) => x);
+    g.champion = championOf(g.id);
+  }
+  res.json(games);
+}));
+
+// Everything about one game: details, expansions, and how we've done at it.
+app.get("/api/collection/:id", wrap((req, res) => {
+  const game = db.prepare("SELECT * FROM games WHERE id = ? AND parent_id IS NULL").get(req.params.id);
+  if (!game) return res.status(404).json({ error: "That game isn't in the collection" });
+  game.expansions = db.prepare(`
+    SELECT g.id, g.name, g.year, g.edition, g.image, g.thumbnail,
+           (SELECT COUNT(*) FROM play_expansions pe WHERE pe.expansion_id = g.id) AS plays
+    FROM games g WHERE g.parent_id = ? ORDER BY COALESCE(g.year, 9999), g.name COLLATE NOCASE`).all(game.id);
+  const summary = db.prepare(`
+    SELECT COUNT(*) AS plays, MIN(played_at) AS first_played, MAX(played_at) AS last_played
+    FROM plays WHERE game_id = ?`).get(game.id);
+  game.plays = summary.plays;
+  game.first_played = summary.first_played;
+  game.last_played = summary.last_played;
+  game.champion = championOf(game.id);
+  game.results = db.prepare(`
+    SELECT pl.id, pl.name, pl.color, COUNT(*) AS plays, SUM(pp.winner) AS wins,
+           COUNT(*) - SUM(pp.winner) AS losses, MAX(pp.score) AS best_score
+    FROM play_players pp JOIN plays p ON p.id = pp.play_id JOIN players pl ON pl.id = pp.player_id
+    WHERE p.game_id = ?
+    GROUP BY pl.id ORDER BY wins DESC, plays DESC, pl.name`).all(game.id);
+  game.recent = playsWithPlayers(db.prepare(`
+    SELECT p.* FROM plays p WHERE p.game_id = ? ORDER BY p.played_at DESC, p.id DESC LIMIT 5`).all(game.id));
+  res.json(game);
+}));
+
 app.get("/healthz", (req, res) => res.send("ok"));
 
 const PORT = Number(process.env.PORT) || 8080;

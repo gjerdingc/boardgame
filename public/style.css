@@ -381,3 +381,115 @@ details[open] summary { margin-bottom: 12px; }
   font-size: 0.72rem; font-weight: 600; white-space: nowrap;
 }
 .game-info .edition-tag { margin-left: 0; justify-self: start; vertical-align: 0; }
+
+/* ---------------- Collection browser (/games) ---------------- */
+.browse { max-width: 1500px; margin: 0 auto; padding: clamp(16px, 2.2vw, 40px); display: grid; gap: 18px; }
+.browse-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.browse-controls {
+  display: grid; gap: 14px; padding: 16px;
+  background: linear-gradient(180deg, var(--card) 0%, var(--bg-2) 100%);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  position: sticky; top: 8px; z-index: 5;
+}
+.browse-controls input[type="search"] { font-size: 1.05rem; padding: 12px 14px; }
+.filter-row { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; }
+.filter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.filter.sort { margin-left: auto; color: inherit; }
+.filter.sort select { width: auto; padding: 7px 10px; }
+.filter-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; background: var(--bg); padding: 4px; border-radius: 99px; border: 1px solid var(--line); }
+.seg button {
+  background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.88rem; font-weight: 600;
+  padding: 6px 12px; border-radius: 99px; cursor: pointer; white-space: nowrap;
+}
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--gold); color: #10201b; }
+.result-count { margin: -4px 2px; color: var(--muted); font-size: 0.9rem; min-height: 1em; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--gold); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
+
+.browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 16px; }
+.shelf-card {
+  text-decoration: none; color: inherit;
+  border-radius: 14px; overflow: hidden; background: var(--card-2); border: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.shelf-card:hover, .shelf-card:focus-visible { transform: translateY(-3px); border-color: rgba(244, 184, 96, 0.6); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35); outline: none; }
+.shelf-card .game-cover { background-size: cover; background-position: center; }
+.shelf-card .facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.82rem; color: var(--text); margin-top: 2px; }
+.facts span { display: inline-flex; align-items: center; gap: 4px; }
+.facts svg, .modal-close svg { width: 15px; height: 15px; fill: none; stroke: var(--gold); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.exp-count { font-size: 0.8rem; color: var(--gold); }
+
+/* Detail dialog */
+.game-modal {
+  width: min(920px, calc(100% - 24px)); max-height: calc(100% - 24px);
+  padding: 0; border: 1px solid var(--line); border-radius: 22px;
+  background: linear-gradient(180deg, var(--card) 0%, var(--bg) 100%); color: var(--text);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+.game-modal::backdrop { background: rgba(5, 12, 10, 0.72); backdrop-filter: blur(4px); }
+.game-modal[open] { animation: pop 0.18s ease-out; }
+@keyframes pop { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
+.modal-close {
+  position: absolute; top: 14px; right: 14px; z-index: 2;
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(10, 20, 17, 0.75); border: 1px solid var(--line); cursor: pointer;
+}
+.modal-close svg { width: 18px; height: 18px; stroke: var(--text); }
+.modal-hero { display: grid; grid-template-columns: 260px 1fr; gap: 24px; padding: 24px; align-items: start; }
+.modal-cover {
+  aspect-ratio: 1 / 1; border-radius: 16px; background: #0b1411 center / cover no-repeat;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+}
+.modal-cover.placeholder {
+  display: grid; place-items: center; font-family: var(--display); font-size: 5rem; color: var(--gold);
+  background: radial-gradient(circle at 30% 20%, #2d5247, #10201b);
+}
+.modal-title h2 { font-family: var(--display); font-size: clamp(1.7rem, 3vw, 2.4rem); line-height: 1.1; margin: 4px 48px 6px 0; }
+.modal-title .sub { color: var(--muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.modal-title .edition-tag { margin-left: 0; }
+.fact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; margin: 18px 0 14px; }
+.fact-grid div { background: var(--card-2); border-radius: 12px; padding: 10px 12px; }
+.fact-grid dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.fact-grid dd { margin: 4px 0 0; font-weight: 700; font-size: 1.1rem; }
+.fact-grid small { color: var(--muted); font-weight: 400; font-size: 0.75rem; }
+.bgg-link { font-size: 0.9rem; font-weight: 600; }
+.modal-sections { padding: 0 24px 24px; display: grid; gap: 22px; }
+.modal-sections h3 { font-family: var(--display); font-size: 1.2rem; margin: 0 0 10px; }
+.modal-sections p { margin: 0 0 10px; line-height: 1.55; }
+.champ-name { display: inline-flex; align-items: center; gap: 6px; color: var(--gold-2); }
+.record-list { display: grid; gap: 8px; }
+.record { display: grid; grid-template-columns: minmax(90px, 160px) 1fr 140px; gap: 12px; align-items: center; }
+.record .pname { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
+.record .wl-bar { margin: 0; }
+.record .nums { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.record .w { color: var(--win); }
+.record .l { color: var(--loss); }
+.exp-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.exp-list li { background: var(--card-2); border-radius: 10px; padding: 9px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.exp-list .edition-tag { margin-left: 0; }
+.description { white-space: pre-line; color: #dcd5c4; }
+.description.clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.tag-groups { display: grid; gap: 10px; }
+.tag-groups > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tag-groups .filter-label { min-width: 110px; }
+.tag { padding: 4px 10px; border-radius: 99px; background: rgba(255, 255, 255, 0.06); font-size: 0.82rem; }
+
+@media (max-width: 700px) {
+  .filter.sort { margin-left: 0; }
+  .browse-controls { position: static; }
+  .filter { width: 100%; }
+  .seg { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  .seg button { padding: 6px 9px; font-size: 0.84rem; }
+  .browse-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .modal-hero { grid-template-columns: 1fr; padding: 18px; }
+  .modal-cover { max-width: 160px; }
+  .modal-sections { padding: 0 18px 18px; }
+  .tag-groups .filter-label { min-width: 100%; }
+  .record { grid-template-columns: 1fr auto; }
+  .record .wl-bar { grid-column: 1 / -1; grid-row: 2; }
+}
+.corner-link.games-link { bottom: 70px; }
+.panel h2 small a { color: var(--gold); text-decoration: none; font-weight: 600; }
+.panel h2 small a:hover { text-decoration: underline; }

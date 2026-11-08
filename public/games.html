@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Our Games</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="theme-color" content="#0f1a17">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="browse">
+    <header class="browse-header">
+      <div class="brand">
+        <h1>Our <span>Games</span></h1>
+        <p id="subtitle">Loading the shelf…</p>
+      </div>
+      <a class="btn ghost" href="./">Scoreboard →</a>
+    </header>
+
+    <section class="browse-controls" aria-label="Find a game">
+      <input type="search" id="q" placeholder="Search by name, designer or theme…" autocomplete="off" aria-label="Search games">
+      <div class="filter-row">
+        <div class="filter">
+          <span class="filter-label">Players</span>
+          <div class="seg" id="f-players" role="group" aria-label="Number of players">
+            <button data-v="" class="on">Any</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6+</button>
+          </div>
+        </div>
+        <div class="filter">
+          <span class="filter-label">Time</span>
+          <div class="seg" id="f-time" role="group" aria-label="Playing time">
+            <button data-v="" class="on">Any</button><button data-v="30">≤ 30 min</button><button data-v="60">≤ 1 h</button><button data-v="120">≤ 2 h</button><button data-v="long">Longer</button>
+          </div>
+        </div>
+        <label class="filter sort">
+          <span class="filter-label">Sort</span>
+          <select id="sort">
+            <option value="name">A–Z</option>
+            <option value="plays">Most played</option>
+            <option value="recent">Recently played</option>
+            <option value="added">Newest in collection</option>
+            <option value="rating">Highest rated</option>
+            <option value="time">Quickest first</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <p class="result-count" id="count" aria-live="polite"></p>
+    <section class="browse-grid" id="grid"></section>
+  </main>
+
+  <dialog class="game-modal" id="modal" aria-labelledby="modal-title">
+    <div id="modal-body"></div>
+  </dialog>
+
+  <script src="common.js"></script>
+  <script src="games.js"></script>
+</body>
+</html>
