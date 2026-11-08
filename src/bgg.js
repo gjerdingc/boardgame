@@ -56,7 +56,12 @@ function parseSearch(xml) {
   return asArray(xml?.items?.item).map((it) => {
     const names = asArray(it.name);
     const primary = names.find((n) => n.type === "primary") || names[0] || {};
-    return { bgg_id: Number(it.id), name: decodeEntities(primary.value), year: num(it.yearpublished) };
+    return {
+      bgg_id: Number(it.id),
+      name: decodeEntities(primary.value),
+      year: num(it.yearpublished),
+      is_expansion: it.type === "boardgameexpansion",
+    };
   });
 }
 
@@ -71,9 +76,17 @@ function parseThing(xml) {
   const ratings = it.statistics?.ratings || {};
   const rating = num(ratings.average);
   const weight = num(ratings.averageweight);
+  // On a base game, "boardgameexpansion" links list its expansions.
+  // On an expansion, the same links are marked inbound="true" and point to its base game(s).
+  const expansionLinks = links.filter((l) => l.type === "boardgameexpansion");
+  const toRef = (l) => ({ bgg_id: Number(l.id), name: decodeEntities(l.value) });
+  const isExpansion = it.type === "boardgameexpansion";
   return {
     bgg_id: Number(it.id),
     name: decodeEntities(primary.value),
+    is_expansion: isExpansion,
+    base_games: isExpansion ? expansionLinks.filter((l) => String(l.inbound) === "true").map(toRef) : [],
+    expansions: isExpansion ? [] : expansionLinks.filter((l) => String(l.inbound) !== "true").map(toRef),
     year: num(it.yearpublished),
     image: it.image ? String(it.image).trim() : null,
     thumbnail: it.thumbnail ? String(it.thumbnail).trim() : null,

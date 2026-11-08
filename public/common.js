@@ -43,3 +43,14 @@ function thumb(gameId, hasImage, name) {
     ? `<img src="covers/${Number(gameId)}" alt="" loading="lazy" onerror="this.outerHTML=this.dataset.ph" data-ph="${esc(ph)}">`
     : ph;
 }
+
+// "Wingspan: European Expansion" shown under Wingspan reads better as "European Expansion".
+function shortExpName(name, baseName) {
+  const n = String(name || "");
+  const b = String(baseName || "").trim();
+  if (b && n.toLowerCase().startsWith(b.toLowerCase())) {
+    const rest = n.slice(b.length).replace(/^\s*[:–—-]\s*/, "").trim();
+    if (rest) return rest;
+  }
+  return n;
+}

@@ -1,5 +1,5 @@
 const PALETTE = ["#f4b860", "#7bd389", "#6cb4ee", "#e76f51", "#c792ea", "#4dd0c8", "#ff8fab", "#f9e07f"];
-const state = { players: [], games: [], plays: [], editingId: null };
+const state = { players: [], games: [], plays: [], editingId: null, openExpansionsFor: null, bggExpansions: {} };
 const $ = (sel) => document.querySelector(sel);
 
 function toast(msg, isError = false) {
@@ -51,14 +51,34 @@ function readPicks() {
   );
 }
 
-function renderPlayForm(picks = readPicks()) {
+const readExpansionPicks = () =>
+  new Set([...document.querySelectorAll("#play-expansions input:checked")].map((el) => el.value));
+
+// Checkboxes for the chosen game's expansions (hidden when it has none).
+function renderExpansionPicks(checked = readExpansionPicks()) {
+  const box = $("#play-expansions");
+  const base = state.games.find((g) => String(g.id) === $("#play-game").value);
+  const exps = base ? expansionsOf(base.id) : [];
+  box.hidden = !exps.length;
+  box.innerHTML = exps.length
+    ? `<div class="exp-picks-label">Expansions used</div><div class="exp-picks-list">${exps
+        .map((x) => `<label class="exp-pick"><input type="checkbox" value="${x.id}" ${checked.has(String(x.id)) ? "checked" : ""}>${esc(shortExpName(x.name, base.name))}</label>`)
+        .join("")}</div>`
+    : "";
+}
+
+$("#play-game").addEventListener("change", () => renderExpansionPicks(new Set()));
+
+function renderPlayForm(picks = readPicks(), expansionPicks = readExpansionPicks()) {
   const sel = $("#play-game");
   const prev = sel.value;
-  sel.innerHTML = state.games.length
-    ? `<option value="">Choose a game…</option>` + state.games.map((g) => `<option value="${g.id}">${esc(g.name)}${g.year ? ` (${g.year})` : ""}</option>`).join("")
+  const bases = baseGames();
+  sel.innerHTML = bases.length
+    ? `<option value="">Choose a game…</option>` + bases.map((g) => `<option value="${g.id}">${esc(g.name)}${g.year ? ` (${g.year})` : ""}</option>`).join("")
     : `<option value="">Add a game first (Games tab)</option>`;
   if (prev) sel.value = prev;
   if (!$("#play-date").value) $("#play-date").value = today();
+  renderExpansionPicks(expansionPicks);
 
   $("#play-players").innerHTML = state.players.length
     ? state.players
@@ -90,7 +110,10 @@ function startEdit(play) {
   form.game_id.value = String(play.game_id);
   form.played_at.value = play.played_at;
   form.notes.value = play.notes || "";
-  renderPlayForm(new Map(play.players.map((p) => [String(p.player_id), { winner: p.winner, score: p.score ?? "" }])));
+  renderPlayForm(
+    new Map(play.players.map((p) => [String(p.player_id), { winner: p.winner, score: p.score ?? "" }])),
+    new Set(play.expansions.map((x) => String(x.id)))
+  );
   setEditing(play);
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -103,8 +126,10 @@ function resetPlayForm({ keepPlayers }) {
     form.played_at.value = today();
   }
   const picks = keepPlayers ? new Map([...readPicks().keys()].map((id) => [id, { winner: false, score: "" }])) : new Map();
+  const wasEditing = !!state.editingId;
   setEditing(null);
-  renderPlayForm(picks);
+  // A new play keeps the same expansions ticked for the next round; after an edit, start clean.
+  renderPlayForm(picks, wasEditing ? new Set() : readExpansionPicks());
 }
 
 $("#play-cancel").addEventListener("click", () => resetPlayForm({ keepPlayers: false }));
@@ -128,7 +153,13 @@ $("#play-form").addEventListener("submit", async (e) => {
   const form = e.target;
   const players = [...readPicks()].map(([id, p]) => ({ player_id: Number(id), winner: p.winner, score: p.score }));
   if (players.length && !players.some((p) => p.winner) && !confirm("No winner marked. Save anyway (everyone lost)?")) return;
-  const body = { game_id: Number(form.game_id.value), played_at: form.played_at.value, notes: form.notes.value, players };
+  const body = {
+    game_id: Number(form.game_id.value),
+    played_at: form.played_at.value,
+    notes: form.notes.value,
+    players,
+    expansions: [...readExpansionPicks()].map(Number),
+  };
   const editing = state.editingId;
   try {
     if (editing) await api(`api/plays/${editing}`, { method: "PUT", body });
@@ -150,6 +181,7 @@ function renderPlays() {
         ${thumb(p.game_id, p.thumbnail, p.game_name)}
         <div class="grow">
           <b>${esc(p.game_name)} <span class="muted" style="font-weight:400">· ${fmtDate(p.played_at)}</span></b>
+          ${p.expansions.length ? `<div class="exp-line">+ ${p.expansions.map((x) => esc(shortExpName(x.name, p.game_name))).join(", ")}</div>` : ""}
           <div class="chips">${p.players.map((pl) => `<span class="chip ${pl.winner ? "win" : ""}"><span class="dot" style="background:${esc(pl.color)}"></span>${pl.winner ? "♛ " : ""}${esc(pl.name)}${pl.score != null ? ` · ${pl.score}` : ""}</span>`).join("")}</div>
           ${p.notes ? `<div class="muted" style="font-size:.85rem;margin-top:4px">${esc(p.notes)}</div>` : ""}
         </div>
@@ -175,47 +207,149 @@ $("#plays-list").addEventListener("click", async (e) => {
 });
 
 // ---------- Games ----------
+const baseGames = () => state.games.filter((g) => !g.parent_id);
+const expansionsOf = (id) => state.games.filter((g) => g.parent_id === id);
+
+function gameMeta(g) {
+  return [
+    g.min_players ? `${g.min_players}${g.max_players && g.max_players !== g.min_players ? `–${g.max_players}` : ""} players` : null,
+    g.playing_time ? `${g.playing_time} min` : null,
+    g.rating ? `BGG ${g.rating.toFixed(1)}` : null,
+    g.parent_id ? `used in ${g.plays} play${g.plays === 1 ? "" : "s"}` : `${g.plays} play${g.plays === 1 ? "" : "s"}`,
+  ].filter(Boolean).join(" · ");
+}
+
+function gameButtons(g) {
+  return `${g.bgg_id ? `<a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${g.bgg_id}" target="_blank" rel="noopener">BGG</a>
+    <button class="btn ghost small" data-refresh-game="${g.id}">Refresh</button>` : ""}
+    <button class="btn danger small" data-del-game="${g.id}">Delete</button>`;
+}
+
+// Panel for adding expansions under a base game: BGG's list of known expansions + manual entry.
+function renderExpansionPanel(base) {
+  const owned = new Set(state.games.map((g) => g.bgg_id).filter(Boolean));
+  const known = state.bggExpansions[base.id];
+  let suggestions = "";
+  if (base.bgg_id) {
+    if (!known) suggestions = `<div class="muted">Loading expansions from BoardGameGeek…</div>`;
+    else if (known.error) suggestions = `<div class="muted">${esc(known.error)} You can still add one by name above.</div>`;
+    else if (!known.length) suggestions = `<div class="muted">BoardGameGeek lists no expansions for this game.</div>`;
+    else suggestions = `<div class="muted" style="font-size:.85rem">Expansions on BoardGameGeek:</div>` + known
+      .map((x) => `
+        <div class="item">
+          <div class="grow"><b>${esc(shortExpName(x.name, base.name))}</b></div>
+          ${owned.has(x.bgg_id)
+            ? `<span class="muted" style="font-size:.85rem">Added</span>`
+            : `<button class="btn small" data-add-exp-bgg="${x.bgg_id}" data-base="${base.id}">Add</button>`}
+        </div>`).join("");
+  }
+  return `
+    <div class="exp-panel">
+      <form class="row" data-exp-manual="${base.id}">
+        <label>Expansion name<input type="text" name="name" required placeholder="e.g. European Expansion"></label>
+        <button class="btn small" type="submit">Add expansion</button>
+      </form>
+      <div class="bgg-results">${suggestions}</div>
+    </div>`;
+}
+
 function renderGames() {
-  $("#games-list").innerHTML = state.games.length
-    ? state.games
-        .map((g) => `
-      <div class="item">
-        ${thumb(g.id, g.thumbnail || g.image, g.name)}
-        <div class="grow">
-          <b>${esc(g.name)}${g.year ? ` <span class="muted" style="font-weight:400">(${g.year})</span>` : ""}</b>
-          <div class="muted" style="font-size:.85rem">
-            ${[
-              g.min_players ? `${g.min_players}${g.max_players && g.max_players !== g.min_players ? `–${g.max_players}` : ""} players` : null,
-              g.playing_time ? `${g.playing_time} min` : null,
-              g.rating ? `BGG ${g.rating.toFixed(1)}` : null,
-              `${g.plays} play${g.plays === 1 ? "" : "s"}`,
-            ].filter(Boolean).join(" · ")}
+  const bases = baseGames();
+  $("#games-list").innerHTML = bases.length
+    ? bases
+        .map((g) => {
+          const exps = expansionsOf(g.id);
+          const open = state.openExpansionsFor === g.id;
+          return `
+      <div class="game-group">
+        <div class="item">
+          ${thumb(g.id, g.thumbnail || g.image, g.name)}
+          <div class="grow">
+            <b>${esc(g.name)}${g.year ? ` <span class="muted" style="font-weight:400">(${g.year})</span>` : ""}</b>
+            <div class="muted" style="font-size:.85rem">${gameMeta(g)}${exps.length ? ` · ${exps.length} expansion${exps.length === 1 ? "" : "s"}` : ""}</div>
           </div>
+          <button class="btn ghost small ${open ? "active" : ""}" data-toggle-exp="${g.id}">+ Expansion</button>
+          ${gameButtons(g)}
         </div>
-        ${g.bgg_id ? `<a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${g.bgg_id}" target="_blank" rel="noopener">BGG</a>
-        <button class="btn ghost small" data-refresh-game="${g.id}">Refresh</button>` : ""}
-        <button class="btn danger small" data-del-game="${g.id}">Delete</button>
-      </div>`)
+        ${exps.map((x) => `
+          <div class="item sub">
+            ${thumb(x.id, x.thumbnail || x.image, shortExpName(x.name, g.name))}
+            <div class="grow">
+              <b>${esc(shortExpName(x.name, g.name))}${x.year ? ` <span class="muted" style="font-weight:400">(${x.year})</span>` : ""}</b>
+              <div class="muted" style="font-size:.85rem">Expansion · ${gameMeta(x)}</div>
+            </div>
+            ${gameButtons(x)}
+          </div>`).join("")}
+        ${open ? renderExpansionPanel(g) : ""}
+      </div>`;
+        })
         .join("")
     : `<div class="muted">No games yet. Search BoardGameGeek above.</div>`;
 }
 
-$("#games-list").addEventListener("click", async (e) => {
-  const { delGame, refreshGame } = e.target.dataset;
+async function loadBggExpansions(base) {
+  if (!base.bgg_id || state.bggExpansions[base.id]) return;
   try {
+    const info = await api(`api/bgg/thing/${base.bgg_id}`);
+    state.bggExpansions[base.id] = info.expansions || [];
+  } catch (err) {
+    state.bggExpansions[base.id] = { error: err.message };
+  }
+  renderGames();
+}
+
+$("#games-list").addEventListener("click", async (e) => {
+  const { delGame, refreshGame, toggleExp, addExpBgg } = e.target.dataset;
+  try {
+    if (toggleExp) {
+      const id = Number(toggleExp);
+      state.openExpansionsFor = state.openExpansionsFor === id ? null : id;
+      renderGames();
+      if (state.openExpansionsFor) {
+        document.querySelector(`[data-exp-manual="${id}"] input`)?.focus();
+        loadBggExpansions(state.games.find((g) => g.id === id));
+      }
+      return;
+    }
     if (delGame) {
       const g = state.games.find((x) => String(x.id) === delGame);
-      if (!confirm(`Delete ${g.name}${g.plays ? ` and its ${g.plays} logged play(s)` : ""}?`)) return;
+      const exps = expansionsOf(g.id).length;
+      const what = g.parent_id
+        ? `expansion ${g.name}? It will be removed from the ${g.plays} play(s) it was used in`
+        : `${g.name}${g.plays ? ` and its ${g.plays} logged play(s)` : ""}${exps ? ` and ${exps} expansion(s)` : ""}?`;
+      if (!confirm(`Delete ${what}`)) return;
       await api(`api/games/${delGame}`, { method: "DELETE" });
-      toast("Game deleted");
+      toast("Deleted");
     } else if (refreshGame) {
       e.target.disabled = true;
       await api(`api/games/${refreshGame}/refresh`, { method: "POST" });
       toast("Updated from BoardGameGeek");
+    } else if (addExpBgg) {
+      e.target.disabled = true;
+      e.target.textContent = "Adding…";
+      const info = await api(`api/bgg/thing/${addExpBgg}`);
+      await api("api/games", { method: "POST", body: { ...info, parent_id: Number(e.target.dataset.base) } });
+      toast(`${info.name} added`);
     } else return;
     loadAll();
   } catch (err) {
     e.target.disabled = false;
+    if (addExpBgg) e.target.textContent = "Add";
+    toast(err.message, true);
+  }
+});
+
+$("#games-list").addEventListener("submit", async (e) => {
+  const baseId = e.target.dataset.expManual;
+  if (!baseId) return;
+  e.preventDefault();
+  try {
+    const name = e.target.name.value.trim();
+    await api("api/games", { method: "POST", body: { name, parent_id: Number(baseId) } });
+    toast(`${name} added`);
+    await loadAll();
+    document.querySelector(`[data-exp-manual="${baseId}"] input`)?.focus();
+  } catch (err) {
     toast(err.message, true);
   }
 });
@@ -233,7 +367,8 @@ $("#bgg-form").addEventListener("submit", async (e) => {
       ? results
           .map((r) => `
         <div class="item">
-          <div class="grow"><b>${esc(r.name)}${r.year ? ` <span class="muted" style="font-weight:400">(${r.year})</span>` : ""}</b></div>
+          <div class="grow"><b>${esc(r.name)}${r.year ? ` <span class="muted" style="font-weight:400">(${r.year})</span>` : ""}</b>
+            ${r.is_expansion ? `<div class="muted" style="font-size:.8rem">Expansion — added under its base game</div>` : ""}</div>
           <a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${r.bgg_id}" target="_blank" rel="noopener">View</a>
           ${owned.has(r.bgg_id)
             ? `<span class="muted" style="font-size:.85rem">In collection</span>`
@@ -252,6 +387,7 @@ $("#bgg-results").addEventListener("click", async (e) => {
   e.target.disabled = true;
   e.target.textContent = "Adding…";
   try {
+    // The server files an expansion under its base game if that game is in the collection.
     const info = await api(`api/bgg/thing/${id}`);
     await api("api/games", { method: "POST", body: info });
     e.target.outerHTML = `<span class="muted" style="font-size:.85rem">Added ✓</span>`;

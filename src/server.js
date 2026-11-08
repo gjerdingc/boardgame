@@ -54,12 +54,38 @@ const GAME_FIELDS = [
   "min_age", "rating", "weight", "categories", "mechanics", "designers", "description",
 ];
 
+// All games, base games and expansions alike. Expansions have parent_id set;
+// their "plays" count is how many plays they were used in.
 app.get("/api/games", wrap((req, res) => {
   res.json(db.prepare(`
-    SELECT g.*, COUNT(p.id) AS plays FROM games g
-    LEFT JOIN plays p ON p.game_id = g.id
-    GROUP BY g.id ORDER BY g.name`).all());
+    SELECT g.*,
+      CASE WHEN g.parent_id IS NULL
+        THEN (SELECT COUNT(*) FROM plays p WHERE p.game_id = g.id)
+        ELSE (SELECT COUNT(*) FROM play_expansions pe WHERE pe.expansion_id = g.id)
+      END AS plays
+    FROM games g ORDER BY g.name COLLATE NOCASE`).all());
 }));
+
+// Work out which base game a new game belongs under, or null for a base game.
+function resolveParent(body) {
+  if (body.parent_id) {
+    const parent = db.prepare("SELECT id, parent_id FROM games WHERE id = ?").get(body.parent_id);
+    if (!parent) throw bad("The base game for this expansion no longer exists");
+    if (parent.parent_id) throw bad("An expansion can't have its own expansions");
+    return parent.id;
+  }
+  if (body.is_expansion) {
+    const bases = Array.isArray(body.base_games) ? body.base_games : [];
+    const find = db.prepare("SELECT id FROM games WHERE bgg_id = ? AND parent_id IS NULL");
+    for (const b of bases) {
+      const local = find.get(b.bgg_id);
+      if (local) return local.id;
+    }
+    const names = bases.map((b) => b.name).slice(0, 3).join(" or ");
+    throw bad(`This is an expansion${names ? ` for ${names}` : ""}. Add the base game first, then add the expansion under it.`);
+  }
+  return null;
+}
 
 app.post("/api/games", wrap((req, res) => {
   const g = {};
@@ -69,15 +95,18 @@ app.post("/api/games", wrap((req, res) => {
   if (g.bgg_id && db.prepare("SELECT 1 FROM games WHERE bgg_id = ?").get(g.bgg_id)) {
     throw bad("That game is already in the collection");
   }
+  const parentId = resolveParent(req.body);
+  const cols = [...GAME_FIELDS, "parent_id"];
   const r = db.prepare(
-    `INSERT INTO games (${GAME_FIELDS.join(",")}) VALUES (${GAME_FIELDS.map(() => "?").join(",")})`
-  ).run(...GAME_FIELDS.map((f) => g[f]));
+    `INSERT INTO games (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`
+  ).run(...GAME_FIELDS.map((f) => g[f]), parentId);
   res.status(201).json(db.prepare("SELECT * FROM games WHERE id = ?").get(r.lastInsertRowid));
 }));
 
 app.delete("/api/games/:id", wrap((req, res) => {
-  db.prepare("DELETE FROM games WHERE id = ?").run(req.params.id);
-  clearCover(Number(req.params.id));
+  const ids = [Number(req.params.id), ...db.prepare("SELECT id FROM games WHERE parent_id = ?").all(req.params.id).map((r) => r.id)];
+  db.prepare("DELETE FROM games WHERE id = ?").run(req.params.id); // expansions cascade
+  ids.forEach(clearCover);
   res.status(204).end();
 }));
 
@@ -113,7 +142,14 @@ function playsWithPlayers(rows) {
     SELECT pp.play_id, pp.player_id, pp.winner, pp.score, pl.name, pl.color
     FROM play_players pp JOIN players pl ON pl.id = pp.player_id
     WHERE pp.play_id = ? ORDER BY pp.winner DESC, pp.score DESC, pl.name`);
-  return rows.map((r) => ({ ...r, players: pp.all(r.id).map((p) => ({ ...p, winner: !!p.winner })) }));
+  const ex = db.prepare(`
+    SELECT g.id, g.name FROM play_expansions pe JOIN games g ON g.id = pe.expansion_id
+    WHERE pe.play_id = ? ORDER BY g.name COLLATE NOCASE`);
+  return rows.map((r) => ({
+    ...r,
+    players: pp.all(r.id).map((p) => ({ ...p, winner: !!p.winner })),
+    expansions: ex.all(r.id),
+  }));
 }
 
 app.get("/api/plays", wrap((req, res) => {
@@ -127,10 +163,21 @@ app.get("/api/plays", wrap((req, res) => {
 function validatePlay(body) {
   const { game_id, played_at, notes } = body;
   const players = Array.isArray(body.players) ? body.players : [];
-  if (!db.prepare("SELECT 1 FROM games WHERE id = ?").get(game_id)) throw bad("Pick a game");
+  if (!db.prepare("SELECT 1 FROM games WHERE id = ? AND parent_id IS NULL").get(game_id)) throw bad("Pick a game");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(played_at || "")) throw bad("Pick a date");
   if (players.length === 0) throw bad("Add at least one player");
-  return { game_id, played_at, notes: notes ? String(notes) : null, players };
+  const expansions = [...new Set((Array.isArray(body.expansions) ? body.expansions : []).map(Number))];
+  const isOwnExpansion = db.prepare("SELECT 1 FROM games WHERE id = ? AND parent_id = ?");
+  for (const id of expansions) {
+    if (!isOwnExpansion.get(id, game_id)) throw bad("One of the ticked expansions doesn't belong to this game");
+  }
+  return { game_id, played_at, notes: notes ? String(notes) : null, players, expansions };
+}
+
+function savePlayExpansions(playId, expansions) {
+  db.prepare("DELETE FROM play_expansions WHERE play_id = ?").run(playId);
+  const ins = db.prepare("INSERT INTO play_expansions (play_id, expansion_id) VALUES (?, ?)");
+  for (const id of expansions) ins.run(playId, id);
 }
 
 function savePlayPlayers(playId, players) {
@@ -148,6 +195,7 @@ app.post("/api/plays", wrap((req, res) => {
     const r = db.prepare("INSERT INTO plays (game_id, played_at, notes) VALUES (?, ?, ?)")
       .run(play.game_id, play.played_at, play.notes);
     savePlayPlayers(r.lastInsertRowid, play.players);
+    savePlayExpansions(r.lastInsertRowid, play.expansions);
     return r.lastInsertRowid;
   });
   res.status(201).json({ id: Number(id) });
@@ -163,6 +211,7 @@ app.put("/api/plays/:id", wrap((req, res) => {
     db.prepare("UPDATE plays SET game_id = ?, played_at = ?, notes = ? WHERE id = ?")
       .run(play.game_id, play.played_at, play.notes, id);
     savePlayPlayers(id, play.players);
+    savePlayExpansions(id, play.expansions);
   });
   res.json({ id });
 }));
@@ -176,7 +225,8 @@ app.delete("/api/plays/:id", wrap((req, res) => {
 app.get("/api/stats", wrap((req, res) => {
   const totals = db.prepare(`
     SELECT (SELECT COUNT(*) FROM plays) AS plays,
-           (SELECT COUNT(*) FROM games) AS games,
+           (SELECT COUNT(*) FROM games WHERE parent_id IS NULL) AS games,
+           (SELECT COUNT(*) FROM games WHERE parent_id IS NOT NULL) AS expansions,
            (SELECT COUNT(*) FROM players) AS players,
            (SELECT MAX(played_at) FROM plays) AS last_played,
            (SELECT MIN(played_at) FROM plays) AS first_played`).get();
@@ -205,8 +255,10 @@ app.get("/api/stats", wrap((req, res) => {
 
   const games = db.prepare(`
     SELECT g.id, g.name, g.year, g.image, g.thumbnail, g.min_players, g.max_players, g.playing_time, g.rating,
-           COUNT(p.id) AS plays, MAX(p.played_at) AS last_played
+           COUNT(p.id) AS plays, MAX(p.played_at) AS last_played,
+           (SELECT COUNT(*) FROM games e WHERE e.parent_id = g.id) AS expansions
     FROM games g LEFT JOIN plays p ON p.game_id = g.id
+    WHERE g.parent_id IS NULL
     GROUP BY g.id ORDER BY plays DESC, last_played DESC, g.name`).all();
 
   // Per game × player results.

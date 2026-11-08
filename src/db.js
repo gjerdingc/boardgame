@@ -58,6 +58,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_pp_player ON play_players(player_id);
 `);
 
+// --- Migrations for databases created by earlier versions ---
+
+// Expansions are games that belong to a base game (parent_id).
+const gameColumns = db.prepare("PRAGMA table_info(games)").all().map((c) => c.name);
+if (!gameColumns.includes("parent_id")) {
+  db.exec("ALTER TABLE games ADD COLUMN parent_id INTEGER REFERENCES games(id) ON DELETE CASCADE");
+}
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_games_parent ON games(parent_id);
+
+  -- Which expansions were used in a play.
+  CREATE TABLE IF NOT EXISTS play_expansions (
+    play_id      INTEGER NOT NULL REFERENCES plays(id) ON DELETE CASCADE,
+    expansion_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    PRIMARY KEY (play_id, expansion_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_pe_expansion ON play_expansions(expansion_id);
+`);
+
 /** Run fn inside a transaction. */
 function tx(fn) {
   db.exec("BEGIN");

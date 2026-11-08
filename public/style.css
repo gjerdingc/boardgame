@@ -335,3 +335,34 @@ details[open] summary { margin-bottom: 12px; }
 }
 
 [hidden] { display: none !important; }
+
+/* Expansions */
+.game-group { display: grid; gap: 6px; }
+.item.sub { margin-left: 34px; background: rgba(30, 54, 48, 0.55); position: relative; }
+.item.sub::before {
+  content: ""; position: absolute; left: -20px; top: -6px; bottom: 50%;
+  width: 14px; border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); border-bottom-left-radius: 8px;
+}
+.item.sub img, .item.sub .thumb-ph { width: 38px; height: 38px; }
+.btn.ghost.active { color: var(--gold); border-color: var(--gold); }
+.exp-panel {
+  margin-left: 34px; padding: 14px; border-radius: 12px;
+  border: 1px dashed var(--line); display: grid; gap: 12px;
+}
+.exp-picks { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; background: var(--card-2); }
+.exp-picks-label { font-size: 0.88rem; color: var(--muted); margin-bottom: 8px; }
+.exp-picks-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.exp-pick {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 7px 12px; border-radius: 99px; border: 1px solid var(--line);
+  color: var(--text); font-size: 0.9rem;
+}
+.exp-pick:has(input:checked) { background: rgba(244, 184, 96, 0.16); border-color: var(--gold); }
+.exp-pick input { width: 16px; height: 16px; accent-color: var(--gold); margin: 0; }
+.exp-line { font-size: 0.8rem; color: var(--gold); opacity: 0.85; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) {
+  .item.sub, .exp-panel { margin-left: 18px; }
+  .item.sub::before { left: -12px; width: 8px; }
+  #games-list .item { flex-wrap: wrap; }
+  #games-list .item .grow { flex-basis: calc(100% - 60px); }
+}

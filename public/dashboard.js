@@ -60,7 +60,7 @@ function renderShelf(games) {
         </div>
         <div class="game-info">
           <h3>${esc(g.name)}</h3>
-          <div class="sub">${g.last_played ? `Last played ${relDate(g.last_played).toLowerCase()}` : "Not played yet"}</div>
+          <div class="sub">${g.last_played ? `Last played ${relDate(g.last_played).toLowerCase()}` : "Not played yet"}${g.expansions ? ` · ${g.expansions} exp.` : ""}</div>
           ${g.champion
             ? `<div class="champ"><span class="crown">♛</span><span class="dot" style="background:${esc(g.champion.color)}"></span>${esc(g.champion.name)} <span class="muted">· ${g.champion.wins} win${g.champion.wins === 1 ? "" : "s"}</span></div>`
             : ""}
@@ -77,6 +77,7 @@ function renderRecent(recent) {
         ${thumb(p.game_id, p.thumbnail || p.image, p.game_name)}
         <div style="min-width:0">
           <div class="play-top"><b>${esc(p.game_name)}</b><time datetime="${esc(p.played_at)}">${relDate(p.played_at)}</time></div>
+          ${p.expansions.length ? `<div class="exp-line">+ ${p.expansions.map((x) => esc(shortExpName(x.name, p.game_name))).join(", ")}</div>` : ""}
           <div class="chips">${p.players
             .map((pl) => `<span class="chip ${pl.winner ? "win" : ""}"><span class="dot" style="background:${esc(pl.color)}"></span>${pl.winner ? "♛ " : ""}${esc(pl.name)}${pl.score != null ? ` · ${pl.score}` : ""}</span>`)
             .join("")}</div>
