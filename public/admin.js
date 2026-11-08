@@ -236,6 +236,7 @@ function editGameRow(g, sub) {
     <form class="item edit-row ${sub ? "sub" : ""}" data-edit-game-form="${g.id}">
       <label class="grow">Name<input type="text" name="name" required value="${esc(g.name)}"></label>
       <label class="year-field">Release year<input type="number" name="year" value="${g.year ?? ""}" placeholder="e.g. 2021"></label>
+      <label class="grow">Image link<input type="url" name="image" value="${esc(g.image ?? "")}" placeholder="https://… (optional)"></label>
       <button class="btn small" type="submit">Save</button>
       <button class="btn ghost small" type="button" data-cancel-edit-game>Cancel</button>
     </form>`;
@@ -264,6 +265,7 @@ function renderExpansionPanel(base) {
       <form class="row" data-exp-manual="${base.id}">
         <label>Expansion name<input type="text" name="name" required placeholder="e.g. European Expansion"></label>
         <label class="year-field">Release year<input type="number" name="year" placeholder="e.g. 2021"></label>
+        <label>Image link (optional)<input type="url" name="image" placeholder="https://…"></label>
         <button class="btn small" type="submit">Add expansion</button>
       </form>
       <div class="bgg-results">${suggestions}</div>
@@ -367,7 +369,7 @@ $("#games-list").addEventListener("submit", async (e) => {
   if (editId) {
     e.preventDefault();
     try {
-      await api(`api/games/${editId}`, { method: "PUT", body: { name: e.target.name.value, year: e.target.year.value } });
+      await api(`api/games/${editId}`, { method: "PUT", body: { name: e.target.name.value, year: e.target.year.value, image: e.target.image.value } });
       state.editingGameId = null;
       toast("Saved");
       await loadAll();
@@ -381,7 +383,7 @@ $("#games-list").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
     const name = e.target.name.value.trim();
-    await api("api/games", { method: "POST", body: { name, year: e.target.year.value, parent_id: Number(baseId) } });
+    await api("api/games", { method: "POST", body: { name, year: e.target.year.value, image: e.target.image.value, parent_id: Number(baseId) } });
     toast(`${name} added`);
     await loadAll();
     document.querySelector(`[data-exp-manual="${baseId}"] input`)?.focus();

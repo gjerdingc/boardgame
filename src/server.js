@@ -93,6 +93,8 @@ app.post("/api/games", wrap((req, res) => {
   g.name = String(g.name || "").trim();
   if (!g.name) throw bad("Game name is required");
   g.year = parseYear(g.year);
+  g.image = parseImageUrl(g.image);
+  g.thumbnail = g.thumbnail ? parseImageUrl(g.thumbnail) : g.image;
   if (g.bgg_id && db.prepare("SELECT 1 FROM games WHERE bgg_id = ?").get(g.bgg_id)) {
     throw bad("That game is already in the collection");
   }
@@ -111,13 +113,30 @@ function parseYear(v) {
   return y;
 }
 
-// Edit a game's or an expansion's name and release year.
+function parseImageUrl(v) {
+  const url = String(v ?? "").trim();
+  if (!url) return null;
+  if (!/^https?:\/\/\S+$/i.test(url)) throw bad("Image link must be a web address starting with http:// or https://");
+  return url;
+}
+
+// Edit a game's or an expansion's name, release year and (optionally) image link.
 app.put("/api/games/:id", wrap((req, res) => {
-  const game = db.prepare("SELECT id FROM games WHERE id = ?").get(req.params.id);
+  const game = db.prepare("SELECT id, image FROM games WHERE id = ?").get(req.params.id);
   if (!game) return res.status(404).json({ error: "That game no longer exists" });
   const name = String(req.body.name || "").trim();
   if (!name) throw bad("Name is required");
-  db.prepare("UPDATE games SET name = ?, year = ? WHERE id = ?").run(name, parseYear(req.body.year), game.id);
+  const year = parseYear(req.body.year);
+  tx(() => {
+    db.prepare("UPDATE games SET name = ?, year = ? WHERE id = ?").run(name, year, game.id);
+    if ("image" in req.body) {
+      const image = parseImageUrl(req.body.image);
+      if (image !== game.image) {
+        db.prepare("UPDATE games SET image = ?, thumbnail = ? WHERE id = ?").run(image, image, game.id);
+        clearCover(game.id);
+      }
+    }
+  });
   res.json(db.prepare("SELECT * FROM games WHERE id = ?").get(game.id));
 }));
 
