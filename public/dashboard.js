@@ -60,6 +60,7 @@ function renderShelf(games) {
         </div>
         <div class="game-info">
           <h3>${esc(g.name)}</h3>
+          ${g.edition ? `<div class="edition-tag">${esc(editionLabel(g.edition))}</div>` : ""}
           <div class="sub">${g.last_played ? `Last played ${relDate(g.last_played).toLowerCase()}` : "Not played yet"}${g.expansions ? ` · ${g.expansions} exp.` : ""}</div>
           ${g.champion
             ? `<div class="champ"><span class="crown">♛</span><span class="dot" style="background:${esc(g.champion.color)}"></span>${esc(g.champion.name)} <span class="muted">· ${g.champion.wins} win${g.champion.wins === 1 ? "" : "s"}</span></div>`

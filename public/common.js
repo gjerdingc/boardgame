@@ -44,6 +44,18 @@ function thumb(gameId, hasImage, name) {
     : ph;
 }
 
+// "2" -> "2nd edition", "Revised" -> "Revised edition", "Deluxe Edition" stays as is.
+function editionLabel(ed) {
+  const e = String(ed ?? "").trim();
+  if (!e) return "";
+  if (/^\d+$/.test(e)) {
+    const n = Number(e);
+    const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th";
+    return `${n}${suffix} edition`;
+  }
+  return /edition/i.test(e) ? e : `${e} edition`;
+}
+
 // "Wingspan: European Expansion" shown under Wingspan reads better as "European Expansion".
 function shortExpName(name, baseName) {
   const n = String(name || "");

@@ -60,8 +60,14 @@ db.exec(`
 
 // --- Migrations for databases created by earlier versions ---
 
-// Expansions are games that belong to a base game (parent_id).
 const gameColumns = db.prepare("PRAGMA table_info(games)").all().map((c) => c.name);
+
+// Which edition the copy we own is. Free text: "2", "3", "Revised", "Deluxe"…
+if (!gameColumns.includes("edition")) {
+  db.exec("ALTER TABLE games ADD COLUMN edition TEXT");
+}
+
+// Expansions are games that belong to a base game (parent_id).
 if (!gameColumns.includes("parent_id")) {
   db.exec("ALTER TABLE games ADD COLUMN parent_id INTEGER REFERENCES games(id) ON DELETE CASCADE");
 }

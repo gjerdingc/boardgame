@@ -99,10 +99,11 @@ app.post("/api/games", wrap((req, res) => {
     throw bad("That game is already in the collection");
   }
   const parentId = resolveParent(req.body);
-  const cols = [...GAME_FIELDS, "parent_id"];
+  // edition is kept out of GAME_FIELDS so a BGG refresh never overwrites it.
+  const cols = [...GAME_FIELDS, "parent_id", "edition"];
   const r = db.prepare(
     `INSERT INTO games (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`
-  ).run(...GAME_FIELDS.map((f) => g[f]), parentId);
+  ).run(...GAME_FIELDS.map((f) => g[f]), parentId, parseEdition(req.body.edition));
   res.status(201).json(db.prepare("SELECT * FROM games WHERE id = ?").get(r.lastInsertRowid));
 }));
 
@@ -111,6 +112,13 @@ function parseYear(v) {
   const y = Number(v);
   if (!Number.isInteger(y) || y < -4000 || y > 2200) throw bad("Year must be a whole year, like 2021");
   return y;
+}
+
+function parseEdition(v) {
+  const ed = String(v ?? "").trim();
+  if (!ed) return null;
+  if (ed.length > 40) throw bad("Edition is too long — keep it short, like 2 or Revised");
+  return ed;
 }
 
 function parseImageUrl(v) {
@@ -129,6 +137,9 @@ app.put("/api/games/:id", wrap((req, res) => {
   const year = parseYear(req.body.year);
   tx(() => {
     db.prepare("UPDATE games SET name = ?, year = ? WHERE id = ?").run(name, year, game.id);
+    if ("edition" in req.body) {
+      db.prepare("UPDATE games SET edition = ? WHERE id = ?").run(parseEdition(req.body.edition), game.id);
+    }
     if ("image" in req.body) {
       const image = parseImageUrl(req.body.image);
       if (image !== game.image) {
@@ -291,7 +302,7 @@ app.get("/api/stats", wrap((req, res) => {
   for (const p of players) p.form = formStmt.all(p.id).map((r) => (r.winner ? "W" : "L"));
 
   const games = db.prepare(`
-    SELECT g.id, g.name, g.year, g.image, g.thumbnail, g.min_players, g.max_players, g.playing_time, g.rating,
+    SELECT g.id, g.name, g.year, g.edition, g.image, g.thumbnail, g.min_players, g.max_players, g.playing_time, g.rating,
            COUNT(p.id) AS plays, MAX(p.played_at) AS last_played,
            (SELECT COUNT(*) FROM games e WHERE e.parent_id = g.id) AS expansions
     FROM games g LEFT JOIN plays p ON p.game_id = g.id

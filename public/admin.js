@@ -74,7 +74,7 @@ function renderPlayForm(picks = readPicks(), expansionPicks = readExpansionPicks
   const prev = sel.value;
   const bases = baseGames();
   sel.innerHTML = bases.length
-    ? `<option value="">Choose a game…</option>` + bases.map((g) => `<option value="${g.id}">${esc(g.name)}${g.year ? ` (${g.year})` : ""}</option>`).join("")
+    ? `<option value="">Choose a game…</option>` + bases.map((g) => `<option value="${g.id}">${esc(g.name)}${g.year ? ` (${g.year})` : ""}${g.edition ? ` – ${esc(editionLabel(g.edition))}` : ""}</option>`).join("")
     : `<option value="">Add a game first (Games tab)</option>`;
   if (prev) sel.value = prev;
   if (!$("#play-date").value) $("#play-date").value = today();
@@ -230,12 +230,15 @@ function gameButtons(g) {
     <button class="btn danger small" data-del-game="${g.id}">Delete</button>`;
 }
 
+const editionTag = (g) => (g.edition ? ` <span class="edition-tag">${esc(editionLabel(g.edition))}</span>` : "");
+
 // Inline form for changing a game's or expansion's name and release year.
 function editGameRow(g, sub) {
   return `
     <form class="item edit-row ${sub ? "sub" : ""}" data-edit-game-form="${g.id}">
       <label class="grow">Name<input type="text" name="name" required value="${esc(g.name)}"></label>
       <label class="year-field">Release year<input type="number" name="year" value="${g.year ?? ""}" placeholder="e.g. 2021"></label>
+      <label class="year-field">Edition<input type="text" name="edition" value="${esc(g.edition ?? "")}" placeholder="e.g. 2"></label>
       <label class="grow">Image link<input type="url" name="image" value="${esc(g.image ?? "")}" placeholder="https://… (optional)"></label>
       <button class="btn small" type="submit">Save</button>
       <button class="btn ghost small" type="button" data-cancel-edit-game>Cancel</button>
@@ -284,7 +287,7 @@ function renderGames() {
         ${state.editingGameId === g.id ? editGameRow(g, false) : `<div class="item">
           ${thumb(g.id, g.thumbnail || g.image, g.name)}
           <div class="grow">
-            <b>${esc(g.name)}${g.year ? ` <span class="muted" style="font-weight:400">(${g.year})</span>` : ""}</b>
+            <b>${esc(g.name)}${g.year ? ` <span class="muted" style="font-weight:400">(${g.year})</span>` : ""}${editionTag(g)}</b>
             <div class="muted" style="font-size:.85rem">${gameMeta(g)}${exps.length ? ` · ${exps.length} expansion${exps.length === 1 ? "" : "s"}` : ""}</div>
           </div>
           <button class="btn ghost small ${open ? "active" : ""}" data-toggle-exp="${g.id}">+ Expansion</button>
@@ -294,7 +297,7 @@ function renderGames() {
           <div class="item sub">
             ${thumb(x.id, x.thumbnail || x.image, shortExpName(x.name, g.name))}
             <div class="grow">
-              <b>${esc(shortExpName(x.name, g.name))}${x.year ? ` <span class="muted" style="font-weight:400">(${x.year})</span>` : ""}</b>
+              <b>${esc(shortExpName(x.name, g.name))}${x.year ? ` <span class="muted" style="font-weight:400">(${x.year})</span>` : ""}${editionTag(x)}</b>
               <div class="muted" style="font-size:.85rem">Expansion · ${x.year ? "" : "release year unknown · "}${gameMeta(x)}</div>
             </div>
             ${gameButtons(x)}
@@ -369,7 +372,7 @@ $("#games-list").addEventListener("submit", async (e) => {
   if (editId) {
     e.preventDefault();
     try {
-      await api(`api/games/${editId}`, { method: "PUT", body: { name: e.target.name.value, year: e.target.year.value, image: e.target.image.value } });
+      await api(`api/games/${editId}`, { method: "PUT", body: { name: e.target.name.value, year: e.target.year.value, edition: e.target.edition.value, image: e.target.image.value } });
       state.editingGameId = null;
       toast("Saved");
       await loadAll();
@@ -444,7 +447,7 @@ $("#manual-game-form").addEventListener("submit", async (e) => {
   try {
     await api("api/games", {
       method: "POST",
-      body: { name: f.name.value, year: f.year.value ? Number(f.year.value) : null, image: f.image.value || null, thumbnail: f.image.value || null },
+      body: { name: f.name.value, year: f.year.value ? Number(f.year.value) : null, edition: f.edition.value, image: f.image.value || null, thumbnail: f.image.value || null },
     });
     f.reset();
     toast("Game added");

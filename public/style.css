@@ -372,3 +372,12 @@ details[open] summary { margin-bottom: 12px; }
 .edit-row label.grow { flex: 1 1 220px; }
 .year-field { flex: 0 0 130px !important; }
 .exp-pick .muted { font-size: 0.8rem; }
+
+/* Edition */
+.edition-tag {
+  display: inline-block; vertical-align: 2px; margin-left: 6px;
+  padding: 1px 8px; border-radius: 99px;
+  border: 1px solid rgba(244, 184, 96, 0.45); color: var(--gold-2);
+  font-size: 0.72rem; font-weight: 600; white-space: nowrap;
+}
+.game-info .edition-tag { margin-left: 0; justify-self: start; vertical-align: 0; }
