@@ -324,3 +324,14 @@ details[open] summary { margin-bottom: 12px; }
   .shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .game-info h3 { font-size: 0.92rem; }
 }
+
+/* Editing a logged play */
+#play-form.editing { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(244, 184, 96, 0.35); }
+.item.editing { outline: 2px solid var(--gold); outline-offset: -2px; }
+.item .btn.small { flex: none; }
+@media (max-width: 600px) {
+  #plays-list .item { flex-wrap: wrap; }
+  #plays-list .item .grow { flex-basis: calc(100% - 60px); }
+}
+
+[hidden] { display: none !important; }

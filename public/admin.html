@@ -25,7 +25,7 @@
     <!-- Log a play -->
     <section class="tab active" id="tab-plays">
       <form class="panel" id="play-form">
-        <h2>Log a play</h2>
+        <h2 id="play-form-title">Log a play</h2>
         <div class="row" style="margin-bottom:16px">
           <label>Game<select name="game_id" id="play-game" required></select></label>
           <label style="flex:0 1 200px">Date<input type="date" name="played_at" id="play-date" required></label>
@@ -33,7 +33,10 @@
         <p class="muted" style="margin:0 0 10px;font-size:.88rem">Tick who played, then mark the winner(s). Scores are optional.</p>
         <div class="player-picks" id="play-players"></div>
         <label style="margin-top:16px">Notes (optional)<input type="text" name="notes" placeholder="Expansion used, house rules, memorable moments…"></label>
-        <div class="row" style="margin-top:16px"><button class="btn" type="submit">Save play</button></div>
+        <div class="row" style="margin-top:16px">
+          <button class="btn" type="submit" id="play-submit">Save play</button>
+          <button class="btn ghost" type="button" id="play-cancel" hidden>Cancel editing</button>
+        </div>
       </form>
 
       <section class="panel">

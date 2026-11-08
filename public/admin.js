@@ -1,5 +1,5 @@
 const PALETTE = ["#f4b860", "#7bd389", "#6cb4ee", "#e76f51", "#c792ea", "#4dd0c8", "#ff8fab", "#f9e07f"];
-const state = { players: [], games: [], plays: [] };
+const state = { players: [], games: [], plays: [], editingId: null };
 const $ = (sel) => document.querySelector(sel);
 
 function toast(msg, isError = false) {
@@ -40,7 +40,18 @@ async function loadAll() {
 }
 
 // ---------- Plays ----------
-function renderPlayForm() {
+
+// Current player selections in the form: Map(playerId -> { winner, score }).
+function readPicks() {
+  return new Map(
+    [...document.querySelectorAll("#play-players .pick.on")].map((el) => [
+      el.dataset.id,
+      { winner: el.querySelector(".win-toggle").classList.contains("on"), score: el.querySelector("input[type=number]").value },
+    ])
+  );
+}
+
+function renderPlayForm(picks = readPicks()) {
   const sel = $("#play-game");
   const prev = sel.value;
   sel.innerHTML = state.games.length
@@ -49,20 +60,54 @@ function renderPlayForm() {
   if (prev) sel.value = prev;
   if (!$("#play-date").value) $("#play-date").value = today();
 
-  const box = $("#play-players");
-  const checked = new Set([...box.querySelectorAll(".pick.on")].map((el) => el.dataset.id));
-  box.innerHTML = state.players.length
+  $("#play-players").innerHTML = state.players.length
     ? state.players
-        .map((p) => `
-        <div class="pick ${checked.has(String(p.id)) ? "on" : ""}" data-id="${p.id}">
-          <input type="checkbox" ${checked.has(String(p.id)) ? "checked" : ""} aria-label="${esc(p.name)} played">
+        .map((p) => {
+          const pick = picks.get(String(p.id));
+          return `
+        <div class="pick ${pick ? "on" : ""}" data-id="${p.id}">
+          <input type="checkbox" ${pick ? "checked" : ""} aria-label="${esc(p.name)} played">
           <span class="pname"><span class="dot" style="background:${esc(p.color)}"></span>${esc(p.name)}</span>
-          <input type="number" step="any" placeholder="Score" aria-label="Score">
-          <button type="button" class="win-toggle">♛ Winner</button>
-        </div>`)
+          <input type="number" step="any" placeholder="Score" aria-label="Score" value="${esc(pick?.score ?? "")}">
+          <button type="button" class="win-toggle ${pick?.winner ? "on" : ""}">♛ Winner</button>
+        </div>`;
+        })
         .join("")
     : `<div class="muted">Add players first (Players tab).</div>`;
 }
+
+function setEditing(play) {
+  state.editingId = play ? play.id : null;
+  $("#play-form-title").textContent = play ? `Edit play · ${play.game_name}, ${fmtDate(play.played_at)}` : "Log a play";
+  $("#play-submit").textContent = play ? "Update play" : "Save play";
+  $("#play-cancel").hidden = !play;
+  $("#play-form").classList.toggle("editing", !!play);
+  document.querySelectorAll("#plays-list .item").forEach((el) => el.classList.toggle("editing", el.dataset.playId === String(state.editingId)));
+}
+
+function startEdit(play) {
+  const form = $("#play-form");
+  form.game_id.value = String(play.game_id);
+  form.played_at.value = play.played_at;
+  form.notes.value = play.notes || "";
+  renderPlayForm(new Map(play.players.map((p) => [String(p.player_id), { winner: p.winner, score: p.score ?? "" }])));
+  setEditing(play);
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function resetPlayForm({ keepPlayers }) {
+  const form = $("#play-form");
+  form.notes.value = "";
+  if (state.editingId) {
+    form.game_id.value = "";
+    form.played_at.value = today();
+  }
+  const picks = keepPlayers ? new Map([...readPicks().keys()].map((id) => [id, { winner: false, score: "" }])) : new Map();
+  setEditing(null);
+  renderPlayForm(picks);
+}
+
+$("#play-cancel").addEventListener("click", () => resetPlayForm({ keepPlayers: false }));
 
 $("#play-players").addEventListener("click", (e) => {
   const pick = e.target.closest(".pick");
@@ -81,21 +126,16 @@ $("#play-players").addEventListener("click", (e) => {
 $("#play-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
-  const players = [...document.querySelectorAll("#play-players .pick.on")].map((el) => ({
-    player_id: Number(el.dataset.id),
-    winner: el.querySelector(".win-toggle").classList.contains("on"),
-    score: el.querySelector("input[type=number]").value,
-  }));
+  const players = [...readPicks()].map(([id, p]) => ({ player_id: Number(id), winner: p.winner, score: p.score }));
   if (players.length && !players.some((p) => p.winner) && !confirm("No winner marked. Save anyway (everyone lost)?")) return;
+  const body = { game_id: Number(form.game_id.value), played_at: form.played_at.value, notes: form.notes.value, players };
+  const editing = state.editingId;
   try {
-    await api("api/plays", {
-      method: "POST",
-      body: { game_id: Number(form.game_id.value), played_at: form.played_at.value, notes: form.notes.value, players },
-    });
-    toast("Play saved 🎲");
-    form.notes.value = "";
-    document.querySelectorAll("#play-players .win-toggle").forEach((b) => b.classList.remove("on"));
-    document.querySelectorAll("#play-players input[type=number]").forEach((i) => (i.value = ""));
+    if (editing) await api(`api/plays/${editing}`, { method: "PUT", body });
+    else await api("api/plays", { method: "POST", body });
+    toast(editing ? "Play updated ✓" : "Play saved 🎲");
+    // After logging a new play, keep the same players ticked for the next round.
+    resetPlayForm({ keepPlayers: !editing });
     await loadAll();
   } catch (err) {
     toast(err.message, true);
@@ -106,13 +146,14 @@ function renderPlays() {
   $("#plays-list").innerHTML = state.plays.length
     ? state.plays
         .map((p) => `
-      <div class="item">
+      <div class="item ${p.id === state.editingId ? "editing" : ""}" data-play-id="${p.id}">
         ${thumb(p.game_id, p.thumbnail, p.game_name)}
         <div class="grow">
           <b>${esc(p.game_name)} <span class="muted" style="font-weight:400">· ${fmtDate(p.played_at)}</span></b>
           <div class="chips">${p.players.map((pl) => `<span class="chip ${pl.winner ? "win" : ""}"><span class="dot" style="background:${esc(pl.color)}"></span>${pl.winner ? "♛ " : ""}${esc(pl.name)}${pl.score != null ? ` · ${pl.score}` : ""}</span>`).join("")}</div>
           ${p.notes ? `<div class="muted" style="font-size:.85rem;margin-top:4px">${esc(p.notes)}</div>` : ""}
         </div>
+        <button class="btn ghost small" data-edit-play="${p.id}">Edit</button>
         <button class="btn danger small" data-del-play="${p.id}">Delete</button>
       </div>`)
         .join("")
@@ -120,9 +161,15 @@ function renderPlays() {
 }
 
 $("#plays-list").addEventListener("click", async (e) => {
-  const id = e.target.dataset.delPlay;
-  if (!id || !confirm("Delete this play?")) return;
-  await api(`api/plays/${id}`, { method: "DELETE" });
+  const { editPlay, delPlay } = e.target.dataset;
+  if (editPlay) {
+    const play = state.plays.find((p) => String(p.id) === editPlay);
+    if (play) startEdit(play);
+    return;
+  }
+  if (!delPlay || !confirm("Delete this play?")) return;
+  await api(`api/plays/${delPlay}`, { method: "DELETE" });
+  if (String(state.editingId) === delPlay) resetPlayForm({ keepPlayers: false });
   toast("Play deleted");
   loadAll();
 });

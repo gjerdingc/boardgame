@@ -124,23 +124,47 @@ app.get("/api/plays", wrap((req, res) => {
   res.json(playsWithPlayers(rows));
 }));
 
-app.post("/api/plays", wrap((req, res) => {
-  const { game_id, played_at, notes } = req.body;
-  const players = Array.isArray(req.body.players) ? req.body.players : [];
+function validatePlay(body) {
+  const { game_id, played_at, notes } = body;
+  const players = Array.isArray(body.players) ? body.players : [];
   if (!db.prepare("SELECT 1 FROM games WHERE id = ?").get(game_id)) throw bad("Pick a game");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(played_at || "")) throw bad("Pick a date");
   if (players.length === 0) throw bad("Add at least one player");
+  return { game_id, played_at, notes: notes ? String(notes) : null, players };
+}
+
+function savePlayPlayers(playId, players) {
+  db.prepare("DELETE FROM play_players WHERE play_id = ?").run(playId);
+  const ins = db.prepare("INSERT INTO play_players (play_id, player_id, winner, score) VALUES (?, ?, ?, ?)");
+  for (const p of players) {
+    const score = p.score === "" || p.score == null || isNaN(Number(p.score)) ? null : Number(p.score);
+    ins.run(playId, p.player_id, p.winner ? 1 : 0, score);
+  }
+}
+
+app.post("/api/plays", wrap((req, res) => {
+  const play = validatePlay(req.body);
   const id = tx(() => {
     const r = db.prepare("INSERT INTO plays (game_id, played_at, notes) VALUES (?, ?, ?)")
-      .run(game_id, played_at, notes ? String(notes) : null);
-    const ins = db.prepare("INSERT INTO play_players (play_id, player_id, winner, score) VALUES (?, ?, ?, ?)");
-    for (const p of players) {
-      const score = p.score === "" || p.score == null || isNaN(Number(p.score)) ? null : Number(p.score);
-      ins.run(r.lastInsertRowid, p.player_id, p.winner ? 1 : 0, score);
-    }
+      .run(play.game_id, play.played_at, play.notes);
+    savePlayPlayers(r.lastInsertRowid, play.players);
     return r.lastInsertRowid;
   });
   res.status(201).json({ id: Number(id) });
+}));
+
+app.put("/api/plays/:id", wrap((req, res) => {
+  const id = Number(req.params.id);
+  if (!db.prepare("SELECT 1 FROM plays WHERE id = ?").get(id)) {
+    return res.status(404).json({ error: "That play no longer exists" });
+  }
+  const play = validatePlay(req.body);
+  tx(() => {
+    db.prepare("UPDATE plays SET game_id = ?, played_at = ?, notes = ? WHERE id = ?")
+      .run(play.game_id, play.played_at, play.notes, id);
+    savePlayPlayers(id, play.players);
+  });
+  res.json({ id });
 }));
 
 app.delete("/api/plays/:id", wrap((req, res) => {
