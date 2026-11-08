@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manage Game Night</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="admin">
+    <header class="admin-header">
+      <h1>Manage</h1>
+      <a class="btn ghost" href="./">← Back to scoreboard</a>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="active" data-tab="plays">Log a play</button>
+      <button data-tab="games">Games</button>
+      <button data-tab="players">Players</button>
+    </nav>
+
+    <!-- Log a play -->
+    <section class="tab active" id="tab-plays">
+      <form class="panel" id="play-form">
+        <h2>Log a play</h2>
+        <div class="row" style="margin-bottom:16px">
+          <label>Game<select name="game_id" id="play-game" required></select></label>
+          <label style="flex:0 1 200px">Date<input type="date" name="played_at" id="play-date" required></label>
+        </div>
+        <p class="muted" style="margin:0 0 10px;font-size:.88rem">Tick who played, then mark the winner(s). Scores are optional.</p>
+        <div class="player-picks" id="play-players"></div>
+        <label style="margin-top:16px">Notes (optional)<input type="text" name="notes" placeholder="Expansion used, house rules, memorable moments…"></label>
+        <div class="row" style="margin-top:16px"><button class="btn" type="submit">Save play</button></div>
+      </form>
+
+      <section class="panel">
+        <h2>Logged plays</h2>
+        <div class="list" id="plays-list"></div>
+      </section>
+    </section>
+
+    <!-- Games -->
+    <section class="tab" id="tab-games">
+      <section class="panel">
+        <h2>Add a game from BoardGameGeek</h2>
+        <form class="row" id="bgg-form">
+          <label>Search<input type="search" id="bgg-q" placeholder="e.g. Wingspan" autocomplete="off"></label>
+          <button class="btn" type="submit">Search</button>
+        </form>
+        <div class="bgg-results" id="bgg-results" style="margin-top:14px"></div>
+
+        <details style="margin-top:16px">
+          <summary>Or add a game manually</summary>
+          <form class="row" id="manual-game-form">
+            <label>Name<input type="text" name="name" required></label>
+            <label style="flex:0 1 120px">Year<input type="number" name="year"></label>
+            <label>Image URL (optional)<input type="text" name="image"></label>
+            <button class="btn" type="submit">Add game</button>
+          </form>
+        </details>
+      </section>
+
+      <section class="panel">
+        <h2>Collection</h2>
+        <div class="list" id="games-list"></div>
+      </section>
+    </section>
+
+    <!-- Players -->
+    <section class="tab" id="tab-players">
+      <form class="panel" id="player-form">
+        <h2>Add a player</h2>
+        <div class="row">
+          <label>Name<input type="text" name="name" required autocomplete="off"></label>
+          <label style="flex:0 0 auto">Colour<input type="color" name="color" value="#f4b860"></label>
+          <button class="btn" type="submit">Add player</button>
+        </div>
+      </form>
+      <section class="panel">
+        <h2>Players</h2>
+        <div class="list" id="players-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="common.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

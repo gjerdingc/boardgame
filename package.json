@@ -1,0 +1,23 @@
+{
+  "name": "boardgame-stats",
+  "version": "1.0.0",
+  "description": "Board game stats for home: scoreboard dashboard plus admin page",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --no-warnings src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gjerdingc/boardgame.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/gjerdingc/boardgame/issues"
+  },
+  "homepage": "https://github.com/gjerdingc/boardgame#readme",
+  "dependencies": {
+    "express": "^4.22.3",
+    "fast-xml-parser": "^4.5.7"
+  },
+  "private": true
+}

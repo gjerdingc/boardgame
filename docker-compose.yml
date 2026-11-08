@@ -1,0 +1,28 @@
+# Portainer stack: Repository, compose path docker-compose.yml.
+services:
+  boardgame-stats:
+    build: .
+    image: boardgame-stats:latest
+    # Rebuild on every deploy, so "Pull and redeploy" picks up changes from GitHub
+    pull_policy: build
+    container_name: boardgame-stats
+    restart: unless-stopped
+    # No host port: plain HTTP on port 8080, only on the "proxy" network. Traefik there
+    # terminates HTTPS and forwards to http://boardgame-stats:8080 (configured in Traefik).
+    expose:
+      - "8080"
+    networks:
+      - proxy
+    environment:
+      TZ: Europe/Oslo
+      # BoardGameGeek API token (https://boardgamegeek.com/applications), set in the Portainer stack.
+      BGG_TOKEN: ${BGG_TOKEN:-}
+    volumes:
+      - boardgame-data:/data
+
+volumes:
+  boardgame-data:
+
+networks:
+  proxy:
+    external: true
