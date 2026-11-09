@@ -135,15 +135,14 @@ function renderMonthly(monthly) {
     </section>`;
 }
 
-function renderBrowseButton(totals) {
-  const cta = document.getElementById("browse-cta");
-  cta.hidden = !totals.games;
-  document.getElementById("browse-cta-text").innerHTML =
-    `Browse our <b>${totals.games}</b> game${totals.games === 1 ? "" : "s"}`;
+const GRID_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>`;
+
+// Gold "Browse our N games" button in the Most played heading.
+function browseButton(count) {
+  return `<a class="browse-cta" href="games">${GRID_ICON}<span>Browse our <b>${count}</b> game${count === 1 ? "" : "s"}</span><span class="arrow" aria-hidden="true">→</span></a>`;
 }
 
 function render(stats) {
-  renderBrowseButton(stats.totals);
   renderTotals(stats.totals);
   const content = document.getElementById("content");
   if (!stats.totals.plays) {
@@ -160,7 +159,7 @@ function render(stats) {
         <section class="panel"><h2>Recent plays</h2>${renderRecent(stats.recent.slice(0, 8))}</section>
       </div>
       <div class="stack">
-        <section class="panel"><h2>Most played</h2>${renderShelf(stats.games)}</section>
+        <section class="panel"><h2>Most played ${browseButton(stats.totals.games)}</h2>${renderShelf(stats.games)}</section>
         ${renderMonthly(stats.monthly)}
         ${renderMatrix(stats)}
       </div>
