@@ -135,7 +135,15 @@ function renderMonthly(monthly) {
     </section>`;
 }
 
+function renderBrowseButton(totals) {
+  const cta = document.getElementById("browse-cta");
+  cta.hidden = !totals.games;
+  document.getElementById("browse-cta-text").innerHTML =
+    `Browse our <b>${totals.games}</b> game${totals.games === 1 ? "" : "s"}`;
+}
+
 function render(stats) {
+  renderBrowseButton(stats.totals);
   renderTotals(stats.totals);
   const content = document.getElementById("content");
   if (!stats.totals.plays) {
@@ -152,7 +160,7 @@ function render(stats) {
         <section class="panel"><h2>Recent plays</h2>${renderRecent(stats.recent.slice(0, 8))}</section>
       </div>
       <div class="stack">
-        <section class="panel"><h2>Most played <small><a href="games">Browse all ${stats.totals.games} games →</a></small></h2>${renderShelf(stats.games)}</section>
+        <section class="panel"><h2>Most played</h2>${renderShelf(stats.games)}</section>
         ${renderMonthly(stats.monthly)}
         ${renderMatrix(stats)}
       </div>

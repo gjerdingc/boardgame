@@ -492,8 +492,6 @@ details[open] summary { margin-bottom: 12px; }
   .record .wl-bar { grid-column: 1 / -1; grid-row: 2; }
 }
 .corner-link.games-link { bottom: 70px; }
-.panel h2 small a { color: var(--gold); text-decoration: none; font-weight: 600; }
-.panel h2 small a:hover { text-decoration: underline; }
 
 /* Play duration */
 .dur-field { display: grid; gap: 6px; flex: 0 1 230px; }
@@ -528,3 +526,17 @@ details[open] summary { margin-bottom: 12px; }
 }
 .link-retry .btn { white-space: nowrap; }
 .link-pick .link-btn { font-size: 0.85rem; }
+
+/* "Browse our games" button in the scoreboard header */
+.browse-cta {
+  margin-top: 18px; display: inline-flex; align-items: center; gap: 10px;
+  padding: 12px 20px 12px 16px; border-radius: 99px;
+  background: var(--gold); color: #10201b; text-decoration: none;
+  font-weight: 700; font-size: clamp(1rem, 1.2vw, 1.2rem);
+  box-shadow: 0 8px 24px rgba(244, 184, 96, 0.25);
+  transition: transform 0.15s, background 0.15s;
+}
+.browse-cta:hover, .browse-cta:focus-visible { background: var(--gold-2); transform: translateY(-2px); }
+.browse-cta svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+.browse-cta .arrow { transition: transform 0.15s; }
+.browse-cta:hover .arrow { transform: translateX(3px); }
