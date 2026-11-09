@@ -3,12 +3,35 @@
 // https://boardgamegeek.com/applications  -> set BGG_TOKEN in the environment.
 const { XMLParser } = require("fast-xml-parser");
 
-const BASE = "https://boardgamegeek.com/xmlapi2";
+// BGG_BASE_URL is only for pointing tests at a stand-in server.
+const BASE = process.env.BGG_BASE_URL || "https://boardgamegeek.com/xmlapi2";
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "",
-  isArray: (name) => ["item", "name", "link"].includes(name),
+  isArray: (name) => ["item", "name", "link", "rank"].includes(name),
 });
+
+// BGG's game "types" (subdomains) show up as family rankings, e.g. name="strategygames".
+const TYPE_NAMES = {
+  strategygames: "Strategy",
+  familygames: "Family",
+  partygames: "Party",
+  thematic: "Thematic",
+  wargames: "War game",
+  abstracts: "Abstract",
+  childrensgames: "Children's",
+  cgs: "Customizable",
+};
+
+// Space requests out so a bulk job (linking a whole collection) stays polite to BGG.
+const MIN_GAP_MS = Number(process.env.BGG_MIN_GAP_MS) || 1200;
+let nextSlot = 0;
+async function throttle() {
+  const now = Date.now();
+  const wait = Math.max(0, nextSlot - now);
+  nextSlot = Math.max(now, nextSlot) + MIN_GAP_MS;
+  if (wait) await new Promise((r) => setTimeout(r, wait));
+}
 
 const asArray = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
 const num = (v) => {
@@ -37,10 +60,13 @@ async function fetchXml(pathAndQuery) {
   if (process.env.BGG_TOKEN) headers.Authorization = `Bearer ${process.env.BGG_TOKEN}`;
 
   // BGG sometimes answers 202 ("queued, try again") — retry a few times.
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(BASE + pathAndQuery, { headers, signal: AbortSignal.timeout(15000) });
-    if (res.status === 202 || res.status === 429) {
-      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await throttle();
+    const res = await fetch(BASE + pathAndQuery, { headers, signal: AbortSignal.timeout(20000) });
+    if (res.status === 202 || res.status === 429 || res.status === 503) {
+      // 202 = queued, 429/503 = slow down. Back off and push later requests back too.
+      const delay = (res.status === 202 ? 2000 : 5000) * (attempt + 1);
+      nextSlot = Math.max(nextSlot, Date.now() + delay);
       continue;
     }
     if (res.status === 401 || res.status === 403) {
@@ -66,14 +92,25 @@ function parseSearch(xml) {
 }
 
 function parseThing(xml) {
-  const it = asArray(xml?.items?.item)[0];
-  if (!it) return null;
+  return parseThings(xml)[0] || null;
+}
+
+function parseThings(xml) {
+  return asArray(xml?.items?.item).map(parseThingItem);
+}
+
+function parseThingItem(it) {
   const names = asArray(it.name);
   const primary = names.find((n) => n.type === "primary") || names[0] || {};
   const links = asArray(it.link);
   const linkValues = (type) =>
-    links.filter((l) => l.type === type).map((l) => decodeEntities(l.value)).slice(0, 8).join(", ") || null;
+    links.filter((l) => l.type === type).map((l) => decodeEntities(l.value)).slice(0, 12).join(", ") || null;
   const ratings = it.statistics?.ratings || {};
+  const types = [
+    ...asArray(ratings.ranks?.rank).filter((r) => r.type === "family").map((r) => TYPE_NAMES[r.name] ||
+      String(r.friendlyname || r.name || "").replace(/\s*(Game)?\s*Rank$/i, "").trim()),
+    ...links.filter((l) => l.type === "boardgamesubdomain").map((l) => decodeEntities(l.value).replace(/\s*Games?$/i, "")),
+  ].filter(Boolean);
   const rating = num(ratings.average);
   const weight = num(ratings.averageweight);
   // On a base game, "boardgameexpansion" links list its expansions.
@@ -98,13 +135,16 @@ function parseThing(xml) {
     weight: weight ? Math.round(weight * 100) / 100 : null,
     categories: linkValues("boardgamecategory"),
     mechanics: linkValues("boardgamemechanic"),
+    types: [...new Set(types)].join(", ") || null,
     designers: linkValues("boardgamedesigner"),
     description: decodeEntities(it.description).trim() || null,
   };
 }
 
-async function search(query) {
-  const xml = await fetchXml(`/search?type=boardgame,boardgameexpansion&query=${encodeURIComponent(query)}`);
+async function search(query, { exact = false, type = "boardgame,boardgameexpansion" } = {}) {
+  const xml = await fetchXml(
+    `/search?type=${type}${exact ? "&exact=1" : ""}&query=${encodeURIComponent(query)}`
+  );
   return parseSearch(xml).slice(0, 30);
 }
 
@@ -113,4 +153,14 @@ async function thing(id) {
   return parseThing(xml);
 }
 
-module.exports = { search, thing, parseSearch, parseThing, parser };
+// Details for many games at once (BGG allows up to 20 ids per request).
+async function things(ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const xml = await fetchXml(`/thing?stats=1&id=${ids.slice(i, i + 20).join(",")}`);
+    out.push(...parseThings(xml));
+  }
+  return out;
+}
+
+module.exports = { search, thing, things, parseSearch, parseThing, parseThings, parser };

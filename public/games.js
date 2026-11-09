@@ -1,5 +1,5 @@
 // Read-only collection browser for guests and family.
-const filters = { q: "", players: "", time: "", sort: "name" };
+const filters = { q: "", players: "", time: "", type: "", sort: "name" };
 let games = [];
 
 const ICONS = {
@@ -37,7 +37,8 @@ function coverStyle(g) {
 // ---------- Filtering ----------
 function matches(g) {
   if (filters.q) {
-    const hay = [g.name, g.designers, g.categories, g.edition, ...g.expansions.map((x) => x.name)].join(" ").toLowerCase();
+    const hay = [g.name, g.designers, g.categories, g.mechanics, g.types, g.edition, ...g.expansions.map((x) => x.name)]
+      .join(" ").toLowerCase();
     if (!filters.q.split(/\s+/).every((w) => hay.includes(w))) return false;
   }
   if (filters.players) {
@@ -46,6 +47,7 @@ function matches(g) {
     const max = g.max_players || g.min_players;
     if (n >= 6 ? max < 6 : n < g.min_players || n > max) return false;
   }
+  if (filters.type && !splitList(g.types).includes(filters.type)) return false;
   if (filters.time) {
     if (!g.playing_time) return false;
     if (filters.time === "long" ? g.playing_time <= 120 : g.playing_time > Number(filters.time)) return false;
@@ -60,6 +62,7 @@ const SORTS = {
   added: (a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id,
   rating: (a, b) => (b.rating || 0) - (a.rating || 0) || a.name.localeCompare(b.name),
   time: (a, b) => (a.playing_time || 9999) - (b.playing_time || 9999) || a.name.localeCompare(b.name),
+  weight: (a, b) => (a.weight || 99) - (b.weight || 99) || a.name.localeCompare(b.name),
 };
 
 // ---------- Grid ----------
@@ -67,7 +70,8 @@ function card(g) {
   const facts = [
     playersText(g) && `<span>${ICONS.players}${playersText(g)}</span>`,
     g.playing_time && `<span>${ICONS.time}${timeText(g.playing_time)}</span>`,
-    g.min_age && `<span class="muted">Age ${g.min_age}+</span>`,
+    g.weight ? `<span class="muted" title="Complexity ${g.weight.toFixed(1)} of 5">${weightText(g.weight)}</span>`
+      : g.min_age && `<span class="muted">Age ${g.min_age}+</span>`,
   ].filter(Boolean).join("");
   return `
     <a class="shelf-card" href="#game-${g.id}" aria-label="${esc(g.name)}">
@@ -86,7 +90,7 @@ function card(g) {
 
 function renderGrid() {
   const list = games.filter(matches).sort(SORTS[filters.sort]);
-  const active = filters.q || filters.players || filters.time;
+  const active = filters.q || filters.players || filters.time || filters.type;
   $("#count").innerHTML = active
     ? `${list.length} of ${games.length} games match · <button class="link-btn" id="clear">Clear filters</button>`
     : "";
@@ -100,9 +104,12 @@ function $(sel) {
 }
 
 // ---------- Detail dialog ----------
+function splitList(text) {
+  return String(text || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 function chips(text) {
-  return String(text || "").split(",").map((s) => s.trim()).filter(Boolean)
-    .map((s) => `<span class="tag">${esc(s)}</span>`).join("");
+  return splitList(text).map((s) => `<span class="tag">${esc(s)}</span>`).join("");
 }
 
 function detail(g) {
@@ -148,9 +155,10 @@ function detail(g) {
     : "";
 
   const tags = [
+    g.types && `<div><span class="filter-label">Type</span>${chips(g.types)}</div>`,
+    g.categories && `<div><span class="filter-label">Category</span>${chips(g.categories)}</div>`,
+    g.mechanics && `<div><span class="filter-label">Mechanism</span>${chips(g.mechanics)}</div>`,
     g.designers && `<div><span class="filter-label">Designer</span>${chips(g.designers)}</div>`,
-    g.categories && `<div><span class="filter-label">Theme</span>${chips(g.categories)}</div>`,
-    g.mechanics && `<div><span class="filter-label">How it plays</span>${chips(g.mechanics)}</div>`,
   ].filter(Boolean).join("");
 
   return `
@@ -231,10 +239,12 @@ $("#grid").addEventListener("click", (e) => {
 });
 $("#q").addEventListener("input", (e) => { filters.q = e.target.value.trim().toLowerCase(); renderGrid(); });
 $("#sort").addEventListener("change", (e) => { filters.sort = e.target.value; renderGrid(); });
+$("#f-type").addEventListener("change", (e) => { filters.type = e.target.value; renderGrid(); });
 $("#count").addEventListener("click", (e) => {
   if (e.target.id !== "clear") return;
-  Object.assign(filters, { q: "", players: "", time: "" });
+  Object.assign(filters, { q: "", players: "", time: "", type: "" });
   $("#q").value = "";
+  $("#f-type").value = "";
   document.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("on", b.dataset.v === ""));
   renderGrid();
 });
@@ -251,6 +261,12 @@ window.addEventListener("hashchange", syncFromHash);
     games = await api("api/collection");
     const exps = games.reduce((n, g) => n + g.expansions.length, 0);
     $("#subtitle").textContent = `${games.length} game${games.length === 1 ? "" : "s"}${exps ? ` and ${exps} expansion${exps === 1 ? "" : "s"}` : ""} on the shelf · tap one to learn more`;
+    // Type filter lists only the types that are in the collection.
+    const types = [...new Set(games.flatMap((g) => splitList(g.types)))].sort();
+    if (types.length) {
+      $("#f-type").insertAdjacentHTML("beforeend", types.map((t) => `<option>${esc(t)}</option>`).join(""));
+      $("#type-filter").hidden = false;
+    }
     renderGrid();
     syncFromHash();
   } catch (err) {

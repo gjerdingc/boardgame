@@ -23,7 +23,7 @@
     </header>
 
     <section class="browse-controls" aria-label="Find a game">
-      <input type="search" id="q" placeholder="Search by name, designer or theme…" autocomplete="off" aria-label="Search games">
+      <input type="search" id="q" placeholder="Search by name, designer, category or mechanism…" autocomplete="off" aria-label="Search games">
       <div class="filter-row">
         <div class="filter">
           <span class="filter-label">Players</span>
@@ -37,6 +37,10 @@
             <button data-v="" class="on">Any</button><button data-v="30">≤ 30 min</button><button data-v="60">≤ 1 h</button><button data-v="120">≤ 2 h</button><button data-v="long">Longer</button>
           </div>
         </div>
+        <label class="filter" id="type-filter" hidden>
+          <span class="filter-label">Type</span>
+          <select id="f-type"><option value="">All types</option></select>
+        </label>
         <label class="filter sort">
           <span class="filter-label">Sort</span>
           <select id="sort">
@@ -46,6 +50,7 @@
             <option value="added">Newest in collection</option>
             <option value="rating">Highest rated</option>
             <option value="time">Quickest first</option>
+            <option value="weight">Easiest first</option>
           </select>
         </label>
       </div>

@@ -37,6 +37,7 @@ async function loadAll() {
   renderPlays();
   renderGames();
   renderPlayers();
+  if (typeof renderLinkPanel === "function") renderLinkPanel();
 }
 
 // ---------- Plays ----------

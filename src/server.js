@@ -3,6 +3,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { db, tx, DATA_DIR } = require("./db");
 const bgg = require("./bgg");
+const { rankCandidates } = require("./bggMatch");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -51,8 +52,30 @@ app.delete("/api/players/:id", wrap((req, res) => {
 // ---------- Games ----------
 const GAME_FIELDS = [
   "name", "bgg_id", "year", "image", "thumbnail", "min_players", "max_players", "playing_time",
-  "min_age", "rating", "weight", "categories", "mechanics", "designers", "description",
+  "min_age", "rating", "weight", "categories", "mechanics", "designers", "description", "types",
 ];
+
+// Details that always come from BGG when a game is linked or refreshed.
+const BGG_INFO_FIELDS = [
+  "min_players", "max_players", "playing_time", "min_age", "rating", "weight",
+  "categories", "mechanics", "designers", "description", "types",
+];
+
+// Link a game to a BGG entry and copy its details in. Our own name, edition and
+// picture are kept; year and picture are only filled in when we have none.
+function applyBggInfo(game, info) {
+  const sets = BGG_INFO_FIELDS.map((f) => `${f} = ?`);
+  const values = BGG_INFO_FIELDS.map((f) => info[f] ?? null);
+  sets.push("bgg_id = ?");
+  values.push(info.bgg_id);
+  if (!game.year && info.year) { sets.push("year = ?"); values.push(info.year); }
+  if (!game.image && info.image) {
+    sets.push("image = ?", "thumbnail = ?");
+    values.push(info.image, info.thumbnail || info.image);
+    clearCover(game.id);
+  }
+  db.prepare(`UPDATE games SET ${sets.join(", ")} WHERE id = ?`).run(...values, game.id);
+}
 
 // All games, base games and expansions alike. Expansions have parent_id set;
 // their "plays" count is how many plays they were used in.
@@ -164,11 +187,61 @@ app.post("/api/games/:id/refresh", wrap(async (req, res) => {
   if (!game?.bgg_id) throw bad("This game is not linked to BoardGameGeek");
   const info = await bgg.thing(game.bgg_id);
   if (!info) throw bad("Not found on BoardGameGeek");
-  const fields = GAME_FIELDS.filter((f) => f !== "bgg_id");
-  db.prepare(`UPDATE games SET ${fields.map((f) => `${f} = ?`).join(", ")} WHERE id = ?`)
-    .run(...fields.map((f) => info[f] ?? null), game.id);
-  clearCover(game.id);
+  applyBggInfo(game, info);
   res.json(db.prepare("SELECT * FROM games WHERE id = ?").get(game.id));
+}));
+
+// ---------- Linking hand-added games to BoardGameGeek ----------
+
+// Find likely BGG entries for one of our games. ?q= searches with a different name.
+app.get("/api/bgg/match/:id", wrap(async (req, res) => {
+  const game = db.prepare("SELECT id, name, year, parent_id FROM games WHERE id = ?").get(req.params.id);
+  if (!game) return res.status(404).json({ error: "That game no longer exists" });
+  const base = game.parent_id ? db.prepare("SELECT name FROM games WHERE id = ?").get(game.parent_id) : null;
+  const q = String(req.query.q || game.name).trim();
+  const type = game.parent_id ? "boardgameexpansion" : "boardgame";
+  const takenIds = new Set(
+    db.prepare("SELECT bgg_id FROM games WHERE bgg_id IS NOT NULL AND id != ?").all(game.id).map((r) => r.bgg_id)
+  );
+  const opts = { baseName: base?.name, takenIds };
+  const target = { ...game, name: q };
+
+  // Exact-name search first; widen only if that finds nothing convincing.
+  let results = await bgg.search(q, { exact: true, type });
+  let ranked = rankCandidates(target, results, opts);
+  if (ranked.confidence !== "sure" && base) {
+    results = results.concat(await bgg.search(`${base.name}: ${q}`, { exact: true, type }));
+    ranked = rankCandidates(target, results, opts);
+  }
+  if (ranked.confidence === "none") {
+    results = results.concat(await bgg.search(base ? `${base.name} ${q}` : q, { type }));
+    ranked = rankCandidates(target, results, opts);
+  }
+  res.json({ game_id: game.id, query: q, ...ranked });
+}));
+
+// Link several games at once: { links: [{ game_id, bgg_id }] }.
+app.post("/api/games/link", wrap(async (req, res) => {
+  const links = (Array.isArray(req.body.links) ? req.body.links : []).slice(0, 100)
+    .map((l) => ({ game_id: Number(l.game_id), bgg_id: Number(l.bgg_id) }))
+    .filter((l) => l.game_id && l.bgg_id);
+  if (!links.length) throw bad("Nothing to link");
+  const infos = new Map((await bgg.things([...new Set(links.map((l) => l.bgg_id))])).map((i) => [i.bgg_id, i]));
+  const linked = [];
+  const failed = [];
+  for (const l of links) {
+    const game = db.prepare("SELECT * FROM games WHERE id = ?").get(l.game_id);
+    const other = db.prepare("SELECT name FROM games WHERE bgg_id = ? AND id != ?").get(l.bgg_id, l.game_id);
+    const info = infos.get(l.bgg_id);
+    if (!game) failed.push({ ...l, error: "Game no longer exists" });
+    else if (other) failed.push({ ...l, error: `Already linked to ${other.name}` });
+    else if (!info) failed.push({ ...l, error: "Not found on BoardGameGeek" });
+    else {
+      applyBggInfo(game, info);
+      linked.push(l.game_id);
+    }
+  }
+  res.json({ linked, failed });
 }));
 
 // ---------- BoardGameGeek lookup ----------
@@ -384,7 +457,7 @@ function championOf(gameId) {
 app.get("/api/collection", wrap((req, res) => {
   const games = db.prepare(`
     SELECT g.id, g.name, g.year, g.edition, g.bgg_id, g.image, g.thumbnail, g.min_players, g.max_players,
-           g.playing_time, g.min_age, g.rating, g.weight, g.categories, g.designers, g.created_at,
+           g.playing_time, g.min_age, g.rating, g.weight, g.categories, g.mechanics, g.types, g.designers, g.created_at,
            COUNT(p.id) AS plays, MAX(p.played_at) AS last_played
     FROM games g LEFT JOIN plays p ON p.game_id = g.id
     WHERE g.parent_id IS NULL

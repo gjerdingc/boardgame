@@ -16,6 +16,15 @@ BGG's XML API now requires a registered application token. Register at
 <https://boardgamegeek.com/applications>, then set the token as `BGG_TOKEN`. Without a
 token BGG search fails, but you can still add games manually on the Games tab.
 
+### Linking games you added by hand
+
+If games were added by hand (for example before you had a token), the Games tab
+shows **Link your games to BoardGameGeek**. It searches BGG for each game using its
+name and year, and you review the matches before anything changes. Linking fills in
+player count, playing time, age, complexity, type, category, mechanism, designers
+and description. Your own names, years, editions and image links are kept.
+Requests are spaced out (about one a second) to be polite to BGG.
+
 ## Running locally
 
 Needs Node.js 22.5 or newer (it uses the built-in `node:sqlite`).

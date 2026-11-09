@@ -67,6 +67,11 @@ if (!gameColumns.includes("edition")) {
   db.exec("ALTER TABLE games ADD COLUMN edition TEXT");
 }
 
+// BGG's game types, e.g. "Strategy, Family".
+if (!gameColumns.includes("types")) {
+  db.exec("ALTER TABLE games ADD COLUMN types TEXT");
+}
+
 // Expansions are games that belong to a base game (parent_id).
 if (!gameColumns.includes("parent_id")) {
   db.exec("ALTER TABLE games ADD COLUMN parent_id INTEGER REFERENCES games(id) ON DELETE CASCADE");
