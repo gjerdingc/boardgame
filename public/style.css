@@ -153,7 +153,8 @@ img { display: block; }
 }
 .game-cover {
   aspect-ratio: 1 / 1;
-  background: #0b1411 center / cover no-repeat;
+  background: #0b1411 center / contain no-repeat;
+  background-size: contain, cover;
   position: relative;
 }
 .game-cover.placeholder {
@@ -416,7 +417,7 @@ details[open] summary { margin-bottom: 12px; }
   transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .shelf-card:hover, .shelf-card:focus-visible { transform: translateY(-3px); border-color: rgba(244, 184, 96, 0.6); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35); outline: none; }
-.shelf-card .game-cover { background-size: cover; background-position: center; }
+.shelf-card .game-cover { background-size: contain, cover; background-position: center; }
 .shelf-card .facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.82rem; color: var(--text); margin-top: 2px; }
 .facts span { display: inline-flex; align-items: center; gap: 4px; }
 .facts svg, .modal-close svg { width: 15px; height: 15px; fill: none; stroke: var(--gold); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -440,7 +441,8 @@ details[open] summary { margin-bottom: 12px; }
 .modal-close svg { width: 18px; height: 18px; stroke: var(--text); }
 .modal-hero { display: grid; grid-template-columns: 260px 1fr; gap: 24px; padding: 24px; align-items: start; }
 .modal-cover {
-  aspect-ratio: 1 / 1; border-radius: 16px; background: #0b1411 center / cover no-repeat;
+  aspect-ratio: 1 / 1; border-radius: 16px; background: #0b1411 center / contain no-repeat;
+  background-size: contain, cover;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
 }
 .modal-cover.placeholder {

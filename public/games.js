@@ -1,5 +1,5 @@
 // Read-only collection browser for guests and family.
-const filters = { q: "", players: "", time: "", type: "", sort: "name" };
+const filters = { q: "", players: "", time: "", type: "", sort: "rating" };
 let games = [];
 
 const ICONS = {
