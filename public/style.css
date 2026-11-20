@@ -417,7 +417,7 @@ details[open] summary { margin-bottom: 12px; }
   transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .shelf-card:hover, .shelf-card:focus-visible { transform: translateY(-3px); border-color: rgba(244, 184, 96, 0.6); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35); outline: none; }
-.shelf-card .game-cover { background-size: contain, cover; background-position: center; }
+.shelf-card .game-cover { aspect-ratio: 4 / 5; background-size: contain, cover; background-position: center; }
 .shelf-card .facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.82rem; color: var(--text); margin-top: 2px; }
 .facts span { display: inline-flex; align-items: center; gap: 4px; }
 .facts svg, .modal-close svg { width: 15px; height: 15px; fill: none; stroke: var(--gold); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

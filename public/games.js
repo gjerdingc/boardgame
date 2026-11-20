@@ -267,6 +267,7 @@ window.addEventListener("hashchange", syncFromHash);
       $("#f-type").insertAdjacentHTML("beforeend", types.map((t) => `<option>${esc(t)}</option>`).join(""));
       $("#type-filter").hidden = false;
     }
+    $("#sort").value = filters.sort; // ignore a choice the browser restored from a previous visit
     renderGrid();
     syncFromHash();
   } catch (err) {

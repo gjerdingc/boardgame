@@ -8,7 +8,13 @@ const { rankCandidates } = require("./bggMatch");
 const app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
-app.use(express.static(path.join(__dirname, "..", "public"), { extensions: ["html"] }));
+app.use(express.static(path.join(__dirname, "..", "public"), {
+  extensions: ["html"],
+  // Always revalidate pages, scripts and styles so a redeploy shows up straight away.
+  setHeaders: (res, file) => {
+    if (/\.(html|js|css)$/.test(file)) res.set("Cache-Control", "no-cache");
+  },
+}));
 
 const wrap = (fn) => (req, res) => {
   try {
