@@ -424,6 +424,75 @@ app.get("/api/stats", wrap((req, res) => {
   res.json({ totals, players, games, matrix, recent, monthly });
 }));
 
+// ---------- Stats for one player ----------
+app.get("/api/players/:id/stats", wrap((req, res) => {
+  const id = Number(req.params.id);
+  const player = db.prepare("SELECT id, name, color FROM players WHERE id = ?").get(id);
+  if (!player) return res.status(404).json({ error: "That player doesn't exist" });
+
+  const totals = db.prepare(`
+    SELECT COUNT(*) AS plays, COALESCE(SUM(pp.winner), 0) AS wins,
+           MIN(p.played_at) AS first_played, MAX(p.played_at) AS last_played,
+           COUNT(DISTINCT p.game_id) AS games
+    FROM play_players pp JOIN plays p ON p.id = pp.play_id
+    WHERE pp.player_id = ?`).get(id);
+  totals.losses = totals.plays - totals.wins;
+  totals.win_rate = totals.plays ? totals.wins / totals.plays : 0;
+
+  // Same ranking as the dashboard leaderboard: wins, then win rate.
+  const board = db.prepare(`
+    SELECT pl.id, COALESCE(SUM(pp.winner), 0) AS wins, COUNT(pp.play_id) AS plays
+    FROM players pl LEFT JOIN play_players pp ON pp.player_id = pl.id GROUP BY pl.id`).all()
+    .filter((p) => p.plays > 0)
+    .map((p) => ({ ...p, rate: p.wins / p.plays }));
+  const me = board.find((p) => p.id === id);
+  totals.rank = me ? 1 + board.filter((p) => p.wins > me.wins || (p.wins === me.wins && p.rate > me.rate)).length : null;
+  totals.ranked_players = board.length;
+
+  // Win/loss per game.
+  const games = db.prepare(`
+    SELECT g.id, g.name, g.image, g.thumbnail,
+           COUNT(*) AS plays, SUM(pp.winner) AS wins, COUNT(*) - SUM(pp.winner) AS losses,
+           MAX(p.played_at) AS last_played, MAX(pp.score) AS best_score
+    FROM play_players pp JOIN plays p ON p.id = pp.play_id JOIN games g ON g.id = p.game_id
+    WHERE pp.player_id = ?
+    GROUP BY g.id
+    ORDER BY plays DESC, wins DESC, g.name COLLATE NOCASE`).all(id);
+
+  // Head to head: every opponent this player has shared a table with.
+  const rivals = db.prepare(`
+    SELECT o.id, o.name, o.color, COUNT(*) AS plays,
+           SUM(CASE WHEN me.winner = 1 AND op.winner = 0 THEN 1 ELSE 0 END) AS wins,
+           SUM(CASE WHEN op.winner = 1 AND me.winner = 0 THEN 1 ELSE 0 END) AS losses
+    FROM play_players me
+    JOIN play_players op ON op.play_id = me.play_id AND op.player_id <> me.player_id
+    JOIN players o ON o.id = op.player_id
+    WHERE me.player_id = ?
+    GROUP BY o.id
+    ORDER BY plays DESC, o.name COLLATE NOCASE`).all(id);
+
+  const plays = playsWithPlayers(db.prepare(`
+    SELECT p.*, g.name AS game_name, g.thumbnail, g.image
+    FROM plays p JOIN games g ON g.id = p.game_id JOIN play_players pp ON pp.play_id = p.id
+    WHERE pp.player_id = ?
+    ORDER BY p.played_at DESC, p.id DESC`).all(id));
+
+  // Longest winning streak and the current streak (W or L), oldest to newest.
+  let best = 0, run = 0;
+  for (const p of [...plays].reverse()) {
+    const won = p.players.find((x) => x.player_id === id)?.winner;
+    run = won ? run + 1 : 0;
+    best = Math.max(best, run);
+  }
+  const results = plays.map((p) => p.players.find((x) => x.player_id === id)?.winner);
+  let current = 0;
+  while (current < results.length && results[current] === results[0]) current++;
+  totals.best_streak = best;
+  totals.current_streak = results.length ? { type: results[0] ? "W" : "L", count: current } : null;
+
+  res.json({ player, totals, games, rivals, plays });
+}));
+
 // ---------- Cover images (cached locally so the dashboard works even if BGG is slow) ----------
 const COVER_DIR = path.join(DATA_DIR, "covers");
 fs.mkdirSync(COVER_DIR, { recursive: true });
