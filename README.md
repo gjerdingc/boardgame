@@ -93,7 +93,7 @@ Nothing here names a domain: changing it means the gateway's `ALLOWED_DOMAINS`, 
 
 Every day the app writes a copy of the database to `/data/backups/boardgames-YYYY-MM-DD.db` and keeps the last `BACKUP_KEEP_DAYS` (default 30). Admins can download any of them, or a fresh one, under **Manage → History**, which also lists who changed what.
 
-Copies on the same disk don't survive losing the disk: also copy `/data/backups` somewhere else, for instance from a NAS that pulls it. To restore, stop the stack, replace `/data/boardgames.db` with a backup, and start it again.
+Copies on the same disk don't survive losing the disk: also copy `/opt/boardgame/backups` somewhere else, for instance from a NAS that pulls it. To restore, stop the stack, delete `boardgames.db-wal` and `boardgames.db-shm` in `/opt/boardgame`, replace `boardgames.db` with a backup, and start it again.
 
 ## Deployment
 
@@ -109,6 +109,8 @@ The container `boardgame-stats` has no host port. It joins the external Docker n
 `proxy` and serves plain HTTP on port 8080; the gateway terminates HTTPS. It runs as the
 `node` user (the entrypoint makes `/data` writable for it first).
 
-Data is kept in the named volume `boardgame-data`, mounted at `/data`.
+Data is kept on the host in `/opt/boardgame` (mounted at `/data`): `boardgames.db` with its
+`-wal` and `-shm` files, `backups/` and the cover image cache `covers/`. Docker creates the
+folder on the first deploy.
 
 To update, use **Pull and redeploy** on the stack.

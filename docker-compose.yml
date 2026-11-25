@@ -22,11 +22,9 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # How many daily backups to keep in /data/backups.
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+    # Data on the host under /opt/boardgame, as for every tool: one folder to copy and back up.
     volumes:
-      - boardgame-data:/data
-
-volumes:
-  boardgame-data:
+      - /opt/boardgame:/data
 
 networks:
   proxy:
