@@ -249,10 +249,11 @@ table.matrix { width: 100%; border-collapse: separate; border-spacing: 0 6px; fo
 .corner-link.primary { background: var(--gold); border-color: var(--gold); color: #10201b; }
 .corner-link.primary svg { color: inherit; }
 .corner-link.primary:hover, .corner-link.primary:focus-visible { background: var(--gold-2); }
-/* On a phone only the main button keeps its word, so the others don't cover the cards */
+/* On a phone the buttons are round icons (the words stay for screen readers), so they don't cover the cards */
 @media (max-width: 600px) {
-  .corner-link:not(.primary) { width: 44px; padding: 0; justify-content: center; }
-  .corner-link:not(.primary) .corner-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .corner-link { width: 44px; padding: 0; justify-content: center; }
+  .corner-link.primary { width: 50px; height: 50px; }
+  .corner-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 
 /* ---------------- Admin ---------------- */
