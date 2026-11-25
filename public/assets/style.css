@@ -493,7 +493,11 @@ details[open] summary { margin-bottom: 12px; }
   .record { grid-template-columns: 1fr auto; }
   .record .wl-bar { grid-column: 1 / -1; grid-row: 2; }
 }
-.corner-link.games-link { bottom: 70px; }
+/* Corner buttons on the scoreboard, stacked; hidden ones leave no gap */
+.corner-links { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 5; }
+.corner-links .corner-link { position: static; }
+.corner-link[hidden] { display: none; }
+.account { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 /* Play duration */
 .dur-field { display: grid; gap: 6px; flex: 0 1 230px; }

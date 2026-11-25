@@ -29,9 +29,9 @@ if (initialTab) document.querySelector(`.tabs button[data-tab="${initialTab}"]`)
 // ---------- Loading ----------
 async function loadAll() {
   [state.players, state.games, state.plays] = await Promise.all([
-    api("api/players"),
-    api("api/games"),
-    api("api/plays?limit=100"),
+    api("api/admin/players"),
+    api("api/admin/games"),
+    api("api/admin/plays?limit=100"),
   ]);
   renderPlayForm();
   renderPlays();
@@ -171,8 +171,8 @@ $("#play-form").addEventListener("submit", async (e) => {
   };
   const editing = state.editingId;
   try {
-    if (editing) await api(`api/plays/${editing}`, { method: "PUT", body });
-    else await api("api/plays", { method: "POST", body });
+    if (editing) await api(`api/admin/plays/${editing}`, { method: "PUT", body });
+    else await api("api/admin/plays", { method: "POST", body });
     toast(editing ? "Play updated ✓" : "Play saved 🎲");
     // After logging a new play, keep the same players ticked for the next round.
     resetPlayForm({ keepPlayers: !editing });
@@ -209,7 +209,7 @@ $("#plays-list").addEventListener("click", async (e) => {
     return;
   }
   if (!delPlay || !confirm("Delete this play?")) return;
-  await api(`api/plays/${delPlay}`, { method: "DELETE" });
+  await api(`api/admin/plays/${delPlay}`, { method: "DELETE" });
   if (String(state.editingId) === delPlay) resetPlayForm({ keepPlayers: false });
   toast("Play deleted");
   loadAll();
@@ -321,7 +321,7 @@ function renderGames() {
 async function loadBggExpansions(base) {
   if (!base.bgg_id || state.bggExpansions[base.id]) return;
   try {
-    const info = await api(`api/bgg/thing/${base.bgg_id}`);
+    const info = await api(`api/admin/bgg/thing/${base.bgg_id}`);
     state.bggExpansions[base.id] = info.expansions || [];
   } catch (err) {
     state.bggExpansions[base.id] = { error: err.message };
@@ -355,17 +355,17 @@ $("#games-list").addEventListener("click", async (e) => {
         ? `expansion ${g.name}? It will be removed from the ${g.plays} play(s) it was used in`
         : `${g.name}${g.plays ? ` and its ${g.plays} logged play(s)` : ""}${exps ? ` and ${exps} expansion(s)` : ""}?`;
       if (!confirm(`Delete ${what}`)) return;
-      await api(`api/games/${delGame}`, { method: "DELETE" });
+      await api(`api/admin/games/${delGame}`, { method: "DELETE" });
       toast("Deleted");
     } else if (refreshGame) {
       e.target.disabled = true;
-      await api(`api/games/${refreshGame}/refresh`, { method: "POST" });
+      await api(`api/admin/games/${refreshGame}/refresh`, { method: "POST" });
       toast("Updated from BoardGameGeek");
     } else if (addExpBgg) {
       e.target.disabled = true;
       e.target.textContent = "Adding…";
-      const info = await api(`api/bgg/thing/${addExpBgg}`);
-      await api("api/games", { method: "POST", body: { ...info, parent_id: Number(e.target.dataset.base) } });
+      const info = await api(`api/admin/bgg/thing/${addExpBgg}`);
+      await api("api/admin/games", { method: "POST", body: { ...info, parent_id: Number(e.target.dataset.base) } });
       toast(`${info.name} added`);
     } else return;
     loadAll();
@@ -381,7 +381,7 @@ $("#games-list").addEventListener("submit", async (e) => {
   if (editId) {
     e.preventDefault();
     try {
-      await api(`api/games/${editId}`, { method: "PUT", body: { name: e.target.name.value, year: e.target.year.value, edition: e.target.edition.value, image: e.target.image.value } });
+      await api(`api/admin/games/${editId}`, { method: "PUT", body: { name: e.target.name.value, year: e.target.year.value, edition: e.target.edition.value, image: e.target.image.value } });
       state.editingGameId = null;
       toast("Saved");
       await loadAll();
@@ -395,7 +395,7 @@ $("#games-list").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
     const name = e.target.name.value.trim();
-    await api("api/games", { method: "POST", body: { name, year: e.target.year.value, image: e.target.image.value, parent_id: Number(baseId) } });
+    await api("api/admin/games", { method: "POST", body: { name, year: e.target.year.value, image: e.target.image.value, parent_id: Number(baseId) } });
     toast(`${name} added`);
     await loadAll();
     document.querySelector(`[data-exp-manual="${baseId}"] input`)?.focus();
@@ -411,7 +411,7 @@ $("#bgg-form").addEventListener("submit", async (e) => {
   if (q.length < 2) return;
   out.innerHTML = `<div class="muted">Searching BoardGameGeek…</div>`;
   try {
-    const results = await api(`api/bgg/search?q=${encodeURIComponent(q)}`);
+    const results = await api(`api/admin/bgg/search?q=${encodeURIComponent(q)}`);
     const owned = new Set(state.games.map((g) => g.bgg_id).filter(Boolean));
     out.innerHTML = results.length
       ? results
@@ -438,8 +438,8 @@ $("#bgg-results").addEventListener("click", async (e) => {
   e.target.textContent = "Adding…";
   try {
     // The server files an expansion under its base game if that game is in the collection.
-    const info = await api(`api/bgg/thing/${id}`);
-    await api("api/games", { method: "POST", body: info });
+    const info = await api(`api/admin/bgg/thing/${id}`);
+    await api("api/admin/games", { method: "POST", body: info });
     e.target.outerHTML = `<span class="muted" style="font-size:.85rem">Added ✓</span>`;
     toast(`${info.name} added to the collection`);
     loadAll();
@@ -454,7 +454,7 @@ $("#manual-game-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = e.target;
   try {
-    await api("api/games", {
+    await api("api/admin/games", {
       method: "POST",
       body: { name: f.name.value, year: f.year.value ? Number(f.year.value) : null, edition: f.edition.value, image: f.image.value || null, thumbnail: f.image.value || null },
     });
@@ -487,7 +487,7 @@ $("#player-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = e.target;
   try {
-    await api("api/players", { method: "POST", body: { name: f.name.value, color: f.color.value } });
+    await api("api/admin/players", { method: "POST", body: { name: f.name.value, color: f.color.value } });
     toast(`${f.name.value} added`);
     f.name.value = "";
     loadAll();
@@ -501,7 +501,7 @@ $("#players-list").addEventListener("click", async (e) => {
   if (!id) return;
   const p = state.players.find((x) => String(x.id) === id);
   if (!confirm(`Delete ${p.name}? Their results will be removed from all plays.`)) return;
-  await api(`api/players/${id}`, { method: "DELETE" });
+  await api(`api/admin/players/${id}`, { method: "DELETE" });
   toast("Player deleted");
   loadAll();
 });
@@ -510,9 +510,15 @@ $("#players-list").addEventListener("change", async (e) => {
   const id = e.target.dataset.colorPlayer;
   if (!id) return;
   const p = state.players.find((x) => String(x.id) === id);
-  await api(`api/players/${id}`, { method: "PUT", body: { name: p.name, color: e.target.value } });
+  await api(`api/admin/players/${id}`, { method: "PUT", body: { name: p.name, color: e.target.value } });
   toast("Colour updated");
   loadAll();
 });
 
 loadAll().catch((err) => toast(err.message, true));
+
+whoAmI().then((me) => {
+  if (me?.email) {
+    document.getElementById("whoami").innerHTML = `${esc(me.email)} · <a href="${signOutUrl()}">Sign out</a>`;
+  }
+});

@@ -122,7 +122,7 @@ function updateRow(id) {
 async function matchRow(id, q) {
   const row = link.rows.get(id);
   try {
-    const res = await api(`api/bgg/match/${id}${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+    const res = await api(`api/admin/bgg/match/${id}${q ? `?q=${encodeURIComponent(q)}` : ""}`);
     row.result = res;
     row.pick = res.best;
     row.include = res.confidence === "sure" || (!!q && !!res.best);
@@ -170,7 +170,7 @@ async function applyLinks() {
   const failed = [];
   try {
     for (let i = 0; i < chosen.length; i += 20) {
-      const res = await api("api/games/link", { method: "POST", body: { links: chosen.slice(i, i + 20) } });
+      const res = await api("api/admin/games/link", { method: "POST", body: { links: chosen.slice(i, i + 20) } });
       linked += res.linked.length;
       failed.push(...res.failed);
       for (const id of res.linked) {
