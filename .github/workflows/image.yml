@@ -26,8 +26,8 @@ jobs:
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
 
-      # Build for this runner first and check the container starts and keeps the
-      # admin pages closed, before anything is pushed.
+      # Build for this runner first and check the container starts and answers,
+      # before anything is pushed.
       - name: Build for the smoke test
         uses: docker/build-push-action@v7
         with:
@@ -52,9 +52,9 @@ jobs:
           check 200 /games
           check 200 /api/public/collection
           check 200 /favicon.svg
-          check 403 /admin
-          check 403 /api/admin/players
-          check 403 /api/admin/players -H 'X-Auth-Request-Email: someone@example.com'
+          # The admin pages are open in the app; the gateway keeps them off the internet
+          check 200 /admin
+          check 200 /api/admin/players
           check 405 /api/me -X POST
           # The app runs as node, not root
           test "$(docker exec bg stat -c %U /proc/1)" = node

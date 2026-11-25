@@ -176,21 +176,19 @@ async function load() {
 
 const PERSON_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.8 3.6-6 7-6s6.2 2.2 7 6"/></svg>`;
 
-// Corner buttons: + for admins; sign in (at home, where the scoreboard is open) or sign out.
+// Corner buttons: + wherever the admin pages can be reached (at home; the gateway blocks them
+// elsewhere), and sign out for someone signed in.
 async function renderAccount() {
-  const me = await whoAmI();
-  const plus = document.getElementById("admin-link");
+  const [me, canAdd] = await Promise.all([
+    whoAmI(),
+    fetch("api/admin/players", { method: "HEAD", credentials: "same-origin" }).then((r) => r.ok, () => false),
+  ]);
+  document.getElementById("admin-link").hidden = !canAdd;
   const acct = document.getElementById("account-link");
-  plus.hidden = !me?.admin;
-  if (!me) return;
-  acct.innerHTML = `${PERSON_ICON}<span class="corner-label">${me.email ? "Sign out" : "Sign in"}</span>`;
-  if (me.email) {
-    acct.href = signOutUrl();
-    acct.title = `Signed in as ${me.email} · sign out`;
-  } else {
-    acct.href = signInUrl("/");
-    acct.title = "Sign in";
-  }
+  if (!me?.email) return;
+  acct.innerHTML = `${PERSON_ICON}<span class="corner-label">Sign out</span>`;
+  acct.href = signOutUrl();
+  acct.title = `Signed in as ${me.email} · sign out`;
   acct.setAttribute("aria-label", acct.title);
   acct.hidden = false;
 }

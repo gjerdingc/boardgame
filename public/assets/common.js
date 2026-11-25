@@ -94,7 +94,7 @@ function wireAuthLinks(root = document) {
   });
 }
 
-// { email, admin } for someone who may see the stats (email is null at home without signing in),
+// { email } for someone who may see the stats (email is null at home without signing in),
 // or null when they may not.
 async function whoAmI() {
   try {

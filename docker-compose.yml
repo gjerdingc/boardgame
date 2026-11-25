@@ -19,8 +19,6 @@ services:
       TZ: Europe/Oslo
       # BoardGameGeek API token (https://boardgamegeek.com/applications), set in the Portainer stack.
       BGG_TOKEN: ${BGG_TOKEN:-}
-      # Google accounts that may add and change things (comma-separated). Without it, nobody can.
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # How many daily backups to keep in /data/backups.
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
     # Data on the host under /opt/boardgame, as for every tool: one folder to copy and back up.

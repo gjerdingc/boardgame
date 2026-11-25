@@ -40,17 +40,17 @@ const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
 // The app runs behind the gateway (traefik-lab-lb) with path rules, see the README. The gateway
 // decides who reaches which path, and sets X-Auth-Request-Email only for someone signed in with
 // Google; it removes any copy a client sends. So the app must never be reachable around the
-// gateway (no published port). Admins are the signed-in users listed in ADMIN_EMAILS.
-const splitEmails = (v) => String(v || "").split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
-const ADMIN_EMAILS = new Set(splitEmails(process.env.ADMIN_EMAILS));
+// gateway (no published port).
+//
+// Anyone who reaches /admin and /api/admin/ may add and change things: at home everyone, guests
+// too, may log a game. The gateway must keep those paths away from the internet (see the README).
+// The email of whoever is signed in, if anyone, goes into the change log.
 // For running locally without the gateway: pretend to be this user. Ignored in production.
 const DEV_USER_EMAIL = process.env.NODE_ENV === "production" ? "" : (process.env.DEV_USER_EMAIL || "").trim().toLowerCase();
-if (!ADMIN_EMAILS.size) console.warn("ADMIN_EMAILS is not set: nobody can add or change anything.");
 
 function userOf(req) {
   return String(req.get("X-Auth-Request-Email") || DEV_USER_EMAIL).trim().toLowerCase() || null;
 }
-const isAdmin = (req) => ADMIN_EMAILS.has(userOf(req) || "");
 
 // Only the admin API changes anything. Every other path is read-only, whatever the gateway does.
 app.use((req, res, next) => {
@@ -59,12 +59,6 @@ app.use((req, res, next) => {
 });
 
 const admin = express.Router();
-admin.use((req, res, next) => {
-  if (isAdmin(req)) return next();
-  const msg = !ADMIN_EMAILS.size ? "No admins are set up (ADMIN_EMAILS)"
-    : userOf(req) ? "Your account can't make changes" : "Sign in as an admin to make changes";
-  res.status(403).json({ error: msg });
-});
 app.use("/api/admin", admin);
 
 // ---------- Change log ----------
@@ -87,7 +81,7 @@ function describePlay(id) {
 }
 
 app.get("/api/me", (req, res) => {
-  res.json({ email: userOf(req), admin: isAdmin(req) });
+  res.json({ email: userOf(req) });
 });
 
 // ---------- Pages ----------
@@ -95,28 +89,7 @@ const page = (file) => (req, res) => res.set("Cache-Control", "no-cache").sendFi
 app.get("/", page("index.html"));
 app.get(["/games", "/games.html"], page("games.html"));
 app.get(["/player", "/player.html"], page("player.html"));
-app.get(["/admin", "/admin.html"], (req, res, next) => {
-  if (isAdmin(req)) return page("admin.html")(req, res, next);
-  res.status(403).set("Cache-Control", "no-store").type("html").send(notAdminPage(userOf(req)));
-});
-
-function notAdminPage(email) {
-  const who = email
-    ? `<p>You're signed in as <b>${escHtml(email)}</b>, which can't make changes.</p>
-       <p><a href="/oauth2/sign_out" data-rd="/admin">Sign in with another account</a></p>`
-    : `<p>Sign in with an admin account to add plays, games and players.</p>
-       <p><a class="btn" href="/oauth2/start" data-rd="/admin">Sign in with Google</a></p>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1"><title>Manage</title>
-  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/style.css"></head>
-  <body><main class="dash"><section class="panel empty"><h2 style="justify-content:center">Admins only</h2>${who}
-  <p><a href="./">← Back to the scoreboard</a></p></section></main>
-  <script src="assets/common.js"></script><script>wireAuthLinks();</script></body></html>`;
-}
-
-function escHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
+app.get(["/admin", "/admin.html"], page("admin.html"));
 
 // ---------- Players ----------
 admin.get("/players", wrap((req, res) => {
