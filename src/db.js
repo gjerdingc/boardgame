@@ -95,6 +95,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_pe_expansion ON play_expansions(expansion_id);
 `);
 
+// Who changed what, from the manage page. "email" is the admin's Google account.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS changes (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    at      TEXT NOT NULL DEFAULT (datetime('now')),
+    email   TEXT,
+    summary TEXT NOT NULL
+  );
+`);
+
 /** Run fn inside a transaction. */
 function tx(fn) {
   db.exec("BEGIN");

@@ -1,0 +1,89 @@
+# Builds the app's image for amd64 and arm64 and pushes it to ghcr.io/<owner>/boardgame.
+#   push to main   -> :latest and :sha-<short>
+#   pull request   -> build (amd64 only) and smoke test, nothing pushed
+# Docs-only pushes don't build.
+name: image
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  pull_request:
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      # Build for this runner first and check the container starts and keeps the
+      # admin pages closed, before anything is pushed.
+      - name: Build for the smoke test
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: boardgame:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test
+        run: |
+          docker run -d --name bg -p 127.0.0.1:8080:8080 boardgame:test
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8080/healthz && break
+            sleep 1
+          done
+          check() {  # check <expected status> <path> [curl args]
+            got=$(curl -s -o /dev/null -w '%{http_code}' "${@:3}" "http://127.0.0.1:8080$2")
+            echo "$2 -> $got"
+            [ "$got" = "$1" ] || { docker logs bg; exit 1; }
+          }
+          check 200 /healthz
+          check 200 /games
+          check 200 /api/public/collection
+          check 403 /admin
+          check 403 /api/admin/players
+          check 403 /api/admin/players -H 'X-Auth-Request-Email: someone@example.com'
+          check 405 /api/me -X POST
+          # The app runs as node, not root
+          test "$(docker exec bg stat -c %U /proc/1)" = node
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image name and tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/boardgame
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=boardgame
+            org.opencontainers.image.description=Board game stats: scoreboard, collection and admin
+      - name: Build and push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

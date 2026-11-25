@@ -24,7 +24,7 @@ function renderLeaders(players) {
       const top = p.rank === 1 && p.wins > 0;
       const rankBg = RANK_COLORS[p.rank - 1] || "#5f7d74";
       return `
-      <div class="leader ${top ? "first" : ""}">
+      <a class="leader ${top ? "first" : ""}" href="player?id=${p.id}" title="See ${esc(p.name)}'s stats">
         <div class="rank" style="background:${rankBg}">${p.rank}</div>
         <div style="min-width:0">
           <div class="leader-name">
@@ -41,7 +41,7 @@ function renderLeaders(players) {
           </div>
         </div>
         <div class="leader-right"><b>${pct}%</b><small>win rate</small></div>
-      </div>`;
+      </a>`;
     })
     .join("")}</div>`;
 }
@@ -80,7 +80,7 @@ function renderRecent(recent) {
           <div class="play-top"><b>${esc(p.game_name)}</b><time datetime="${esc(p.played_at)}">${relDate(p.played_at)}${p.duration_min ? ` · ⏱ ${fmtDuration(p.duration_min)}` : ""}</time></div>
           ${p.expansions.length ? `<div class="exp-line">+ ${p.expansions.map((x) => esc(shortExpName(x.name, p.game_name))).join(", ")}</div>` : ""}
           <div class="chips">${p.players
-            .map((pl) => `<span class="chip ${pl.winner ? "win" : ""}"><span class="dot" style="background:${esc(pl.color)}"></span>${pl.winner ? "♛ " : ""}${esc(pl.name)}${pl.score != null ? ` · ${pl.score}` : ""}</span>`)
+            .map((pl) => `<a class="chip ${pl.winner ? "win" : ""}" href="player?id=${pl.player_id}"><span class="dot" style="background:${esc(pl.color)}"></span>${pl.winner ? "♛ " : ""}${esc(pl.name)}${pl.score != null ? ` · ${pl.score}` : ""}</a>`)
             .join("")}</div>
         </div>
       </div>`)
@@ -97,7 +97,7 @@ function renderMatrix(stats) {
       <h2>Head to head <small>wins – losses per game</small></h2>
       <div class="matrix-wrap">
         <table class="matrix">
-          <thead><tr><th>Game</th><th>Plays</th>${players.map((p) => `<th><span class="dot" style="display:inline-block;background:${esc(p.color)};margin-right:6px"></span>${esc(p.name)}</th>`).join("")}</tr></thead>
+          <thead><tr><th>Game</th><th>Plays</th>${players.map((p) => `<th><a href="player?id=${p.id}"><span class="dot" style="display:inline-block;background:${esc(p.color)};margin-right:6px"></span>${esc(p.name)}</a></th>`).join("")}</tr></thead>
           <tbody>${games
             .map((g) => {
               const best = g.champion?.id;
@@ -174,5 +174,27 @@ async function load() {
   }
 }
 
+const PERSON_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.8 3.6-6 7-6s6.2 2.2 7 6"/></svg>`;
+
+// Corner buttons: + for admins; sign in (at home, where the scoreboard is open) or sign out.
+async function renderAccount() {
+  const me = await whoAmI();
+  const plus = document.getElementById("admin-link");
+  const acct = document.getElementById("account-link");
+  plus.hidden = !me?.admin;
+  if (!me) return;
+  acct.innerHTML = PERSON_ICON;
+  if (me.email) {
+    acct.href = signOutUrl();
+    acct.title = `Signed in as ${me.email} · sign out`;
+  } else {
+    acct.href = signInUrl("/");
+    acct.title = "Sign in";
+  }
+  acct.setAttribute("aria-label", acct.title);
+  acct.hidden = false;
+}
+
 load();
+renderAccount();
 setInterval(load, REFRESH_MS);

@@ -75,3 +75,31 @@ function shortExpName(name, baseName) {
   }
   return n;
 }
+
+// ---------- Signing in ----------
+// Sign-in happens at the gateway, which serves /oauth2/ on this same name. Google sends the
+// browser back to rd, which has to be a full address, so it is built from this page's origin.
+function signInUrl(path = location.pathname + location.search) {
+  return `/oauth2/start?rd=${encodeURIComponent(location.origin + path)}`;
+}
+
+function signOutUrl(path = "/games") {
+  return `/oauth2/sign_out?rd=${encodeURIComponent(location.origin + path)}`;
+}
+
+// <a href="/oauth2/start" data-rd="/admin"> gets the full link (used by pages the server writes).
+function wireAuthLinks(root = document) {
+  root.querySelectorAll('a[href^="/oauth2/"][data-rd]').forEach((a) => {
+    a.href = a.getAttribute("href").startsWith("/oauth2/sign_out") ? signOutUrl(a.dataset.rd) : signInUrl(a.dataset.rd);
+  });
+}
+
+// { email, admin } for someone who may see the stats (email is null at home without signing in),
+// or null when they may not.
+async function whoAmI() {
+  try {
+    return await api("api/me");
+  } catch {
+    return null;
+  }
+}
