@@ -183,7 +183,7 @@ async function renderAccount() {
   const acct = document.getElementById("account-link");
   plus.hidden = !me?.admin;
   if (!me) return;
-  acct.innerHTML = PERSON_ICON;
+  acct.innerHTML = `${PERSON_ICON}<span class="corner-label">${me.email ? "Sign out" : "Sign in"}</span>`;
   if (me.email) {
     acct.href = signOutUrl();
     acct.title = `Signed in as ${me.email} · sign out`;
