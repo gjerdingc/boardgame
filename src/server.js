@@ -18,6 +18,11 @@ app.use("/assets", express.static(path.join(PUBLIC_DIR, "assets"), {
     if (/\.(js|css)$/.test(file)) res.set("Cache-Control", "no-cache");
   },
 }));
+// The family homepage and phones look for the icon at the site root.
+for (const icon of ["favicon.svg", "apple-touch-icon.png"]) {
+  app.get(`/${icon}`, (req, res) => res.set("Cache-Control", "public, max-age=86400")
+    .sendFile(path.join(PUBLIC_DIR, "assets", icon)));
+}
 
 const wrap = (fn) => (req, res) => {
   try {

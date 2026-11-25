@@ -57,7 +57,7 @@ an admin.
 
 How the paths are laid out:
 
-- `/games`, `/assets/`, `/covers/` and `/api/public/`: open to everyone, read-only. `/api/public/` has the games and how often they're played, nothing about players.
+- `/games`, `/assets/`, `/covers/`, `/api/public/` and the icons `/favicon.svg` and `/apple-touch-icon.png`: open to everyone, read-only. `/api/public/` has the games and how often they're played, nothing about players.
 - `/admin` and `/api/admin/`: everything that changes data (and the BoardGameGeek lookups). The app answers 403 unless the signed-in user is in `ADMIN_EMAILS`. Without `ADMIN_EMAILS`, nobody can change anything.
 - Everything else: read-only stats. Any other method than GET and HEAD gets 405 from the app, whatever the gateway lets through.
 - `/oauth2/`: sign in and out, served by the gateway.
@@ -75,7 +75,7 @@ Needs Google sign-in set up in the gateway (`COMPOSE_PROFILES=sso`, `SSO_DOMAIN`
 ```
 /admin /api/admin/              from=home  sign-in
 /admin /api/admin/              deny
-/games /assets/ /covers/ /api/public/  open  read-only
+/games /assets/ /covers/ /api/public/ /favicon.svg /apple-touch-icon.png  open  read-only
 /                               from=home  optional  read-only
 /api/                           sign-in=401  read-only
 /                               sign-in=/games  read-only

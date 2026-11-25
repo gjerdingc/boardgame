@@ -51,6 +51,7 @@ jobs:
           check 200 /healthz
           check 200 /games
           check 200 /api/public/collection
+          check 200 /favicon.svg
           check 403 /admin
           check 403 /api/admin/players
           check 403 /api/admin/players -H 'X-Auth-Request-Email: someone@example.com'
