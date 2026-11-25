@@ -1,10 +1,11 @@
 # Portainer stack: Repository, compose path docker-compose.yml.
+# The image is built by GitHub Actions (.github/workflows/image.yml) on every push to main,
+# so the host only pulls it and needs no build tools. To roll back, pin a tag: :sha-<short>.
 services:
   boardgame-stats:
-    build: .
-    image: boardgame-stats:latest
-    # Rebuild on every deploy, so "Pull and redeploy" picks up changes from GitHub
-    pull_policy: build
+    image: ghcr.io/gjerdingc/boardgame:latest
+    # Check for a newer image on every deploy
+    pull_policy: always
     container_name: boardgame-stats
     restart: unless-stopped
     # No host port: plain HTTP on port 8080, only on the "proxy" network. Traefik there
@@ -22,11 +23,9 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # How many daily backups to keep in /data/backups.
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+    # Data on the host under /opt/boardgame, as for every tool: one folder to copy and back up.
     volumes:
-      - boardgame-data:/data
-
-volumes:
-  boardgame-data:
+      - /opt/boardgame:/data
 
 networks:
   proxy:

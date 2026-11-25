@@ -93,11 +93,17 @@ Nothing here names a domain: changing it means the gateway's `ALLOWED_DOMAINS`, 
 
 Every day the app writes a copy of the database to `/data/backups/boardgames-YYYY-MM-DD.db` and keeps the last `BACKUP_KEEP_DAYS` (default 30). Admins can download any of them, or a fresh one, under **Manage → History**, which also lists who changed what.
 
-Copies on the same disk don't survive losing the disk: also copy `/data/backups` somewhere else, for instance from a NAS that pulls it. To restore, stop the stack, replace `/data/boardgames.db` with a backup, and start it again.
+Copies on the same disk don't survive losing the disk: also copy `/opt/boardgame/backups` somewhere else, for instance from a NAS that pulls it. To restore, stop the stack, delete `boardgames.db-wal` and `boardgames.db-shm` in `/opt/boardgame`, replace `boardgames.db` with a backup, and start it again.
 
 ## Deployment
 
-Portainer stack from this repository, compose path `docker-compose.yml`. Stack environment variables:
+GitHub Actions builds the image on every push to `main` (not for README-only changes) and
+pushes it to `ghcr.io/gjerdingc/boardgame` as `:latest` and `:sha-<short commit>`, for amd64
+and arm64. It first starts the container and checks that it answers and keeps the admin pages
+closed; if that fails, nothing is pushed. Pull requests are built and checked, not pushed.
+
+Portainer stack from this repository, compose path `docker-compose.yml`. The host only pulls
+the image, so it needs internet access to `ghcr.io`, but no build tools. Stack environment variables:
 
 | Variable | What it does |
 |---|---|
@@ -109,6 +115,17 @@ The container `boardgame-stats` has no host port. It joins the external Docker n
 `proxy` and serves plain HTTP on port 8080; the gateway terminates HTTPS. It runs as the
 `node` user (the entrypoint makes `/data` writable for it first).
 
-Data is kept in the named volume `boardgame-data`, mounted at `/data`.
+Data is kept on the host in `/opt/boardgame` (mounted at `/data`): `boardgames.db` with its
+`-wal` and `-shm` files, `backups/` and the cover image cache `covers/`. Docker creates the
+folder on the first deploy.
 
-To update, use **Pull and redeploy** on the stack.
+To update, push to `main`, wait for the **image** workflow under the repository's **Actions** tab to
+go green (a minute or two), then use **Pull and redeploy** on the stack. Or let Portainer do it:
+under the stack's **GitOps updates**, turn on automatic updates (polling, for example every 5
+minutes) with **Re-pull image** and **Force redeployment** on. Portainer then pulls `:latest` at
+every check and only replaces the container when the image has changed.
+
+To roll back, change the image in `docker-compose.yml` to an earlier `:sha-<short commit>` tag
+(they are listed under the repository's **Packages**), or set it in the stack's editor.
+
+To build the image on your own machine: `docker build -t boardgame .`
