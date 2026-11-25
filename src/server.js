@@ -3,16 +3,19 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { db, tx, DATA_DIR } = require("./db");
 const bgg = require("./bgg");
+const backup = require("./backup");
 const { rankCandidates } = require("./bggMatch");
 
 const app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
-app.use(express.static(path.join(__dirname, "..", "public"), {
-  extensions: ["html"],
-  // Always revalidate pages, scripts and styles so a redeploy shows up straight away.
+const PUBLIC_DIR = path.join(__dirname, "..", "public");
+
+// Scripts, styles and icons. Open to everyone (the collection page needs them), so nothing in
+// here may hold data. Always revalidated, so a redeploy shows up straight away.
+app.use("/assets", express.static(path.join(PUBLIC_DIR, "assets"), {
   setHeaders: (res, file) => {
-    if (/\.(html|js|css)$/.test(file)) res.set("Cache-Control", "no-cache");
+    if (/\.(js|css)$/.test(file)) res.set("Cache-Control", "no-cache");
   },
 }));
 
@@ -28,30 +31,118 @@ const wrap = (fn) => (req, res) => {
 };
 const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
 
+// ---------- Who is asking ----------
+// The app runs behind the gateway (traefik-lab-lb) with path rules, see the README. The gateway
+// decides who reaches which path, and sets X-Auth-Request-Email only for someone signed in with
+// Google; it removes any copy a client sends. So the app must never be reachable around the
+// gateway (no published port). Admins are the signed-in users listed in ADMIN_EMAILS.
+const splitEmails = (v) => String(v || "").split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
+const ADMIN_EMAILS = new Set(splitEmails(process.env.ADMIN_EMAILS));
+// For running locally without the gateway: pretend to be this user. Ignored in production.
+const DEV_USER_EMAIL = process.env.NODE_ENV === "production" ? "" : (process.env.DEV_USER_EMAIL || "").trim().toLowerCase();
+if (!ADMIN_EMAILS.size) console.warn("ADMIN_EMAILS is not set: nobody can add or change anything.");
+
+function userOf(req) {
+  return String(req.get("X-Auth-Request-Email") || DEV_USER_EMAIL).trim().toLowerCase() || null;
+}
+const isAdmin = (req) => ADMIN_EMAILS.has(userOf(req) || "");
+
+// Only the admin API changes anything. Every other path is read-only, whatever the gateway does.
+app.use((req, res, next) => {
+  if (req.method === "GET" || req.method === "HEAD" || req.path.startsWith("/api/admin/")) return next();
+  res.status(405).json({ error: "Not allowed" });
+});
+
+const admin = express.Router();
+admin.use((req, res, next) => {
+  if (isAdmin(req)) return next();
+  const msg = !ADMIN_EMAILS.size ? "No admins are set up (ADMIN_EMAILS)"
+    : userOf(req) ? "Your account can't make changes" : "Sign in as an admin to make changes";
+  res.status(403).json({ error: msg });
+});
+app.use("/api/admin", admin);
+
+// ---------- Change log ----------
+function logChange(req, summary) {
+  db.prepare("INSERT INTO changes (email, summary) VALUES (?, ?)").run(userOf(req), summary);
+}
+
+const gameName = (id) => db.prepare("SELECT name FROM games WHERE id = ?").get(id)?.name || `game #${id}`;
+const playerName = (id) => db.prepare("SELECT name FROM players WHERE id = ?").get(id)?.name || `player #${id}`;
+
+// "Wingspan on 2026-11-18 (♛ Kari 80, Ola 60)": enough to log the play again by hand.
+function describePlay(id) {
+  const p = db.prepare("SELECT p.played_at, g.name FROM plays p JOIN games g ON g.id = p.game_id WHERE p.id = ?").get(id);
+  if (!p) return `play #${id}`;
+  const who = db.prepare(`
+    SELECT pl.name, pp.winner, pp.score FROM play_players pp JOIN players pl ON pl.id = pp.player_id
+    WHERE pp.play_id = ? ORDER BY pp.winner DESC, pl.name`).all(id)
+    .map((x) => `${x.winner ? "♛ " : ""}${x.name}${x.score != null ? ` ${x.score}` : ""}`);
+  return `${p.name} on ${p.played_at} (${who.join(", ")})`;
+}
+
+app.get("/api/me", (req, res) => {
+  res.json({ email: userOf(req), admin: isAdmin(req) });
+});
+
+// ---------- Pages ----------
+const page = (file) => (req, res) => res.set("Cache-Control", "no-cache").sendFile(path.join(PUBLIC_DIR, file));
+app.get("/", page("index.html"));
+app.get(["/games", "/games.html"], page("games.html"));
+app.get(["/player", "/player.html"], page("player.html"));
+app.get(["/admin", "/admin.html"], (req, res, next) => {
+  if (isAdmin(req)) return page("admin.html")(req, res, next);
+  res.status(403).set("Cache-Control", "no-store").type("html").send(notAdminPage(userOf(req)));
+});
+
+function notAdminPage(email) {
+  const who = email
+    ? `<p>You're signed in as <b>${escHtml(email)}</b>, which can't make changes.</p>
+       <p><a href="/oauth2/sign_out" data-rd="/admin">Sign in with another account</a></p>`
+    : `<p>Sign in with an admin account to add plays, games and players.</p>
+       <p><a class="btn" href="/oauth2/start" data-rd="/admin">Sign in with Google</a></p>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><title>Manage</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/style.css"></head>
+  <body><main class="dash"><section class="panel empty"><h2 style="justify-content:center">Admins only</h2>${who}
+  <p><a href="./">← Back to the scoreboard</a></p></section></main>
+  <script src="assets/common.js"></script><script>wireAuthLinks();</script></body></html>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 // ---------- Players ----------
-app.get("/api/players", wrap((req, res) => {
+admin.get("/players", wrap((req, res) => {
   res.json(db.prepare("SELECT * FROM players ORDER BY name").all());
 }));
 
-app.post("/api/players", wrap((req, res) => {
+admin.post("/players", wrap((req, res) => {
   const name = String(req.body.name || "").trim();
   const color = /^#[0-9a-f]{6}$/i.test(req.body.color || "") ? req.body.color : "#f4b860";
   if (!name) throw bad("Name is required");
   if (db.prepare("SELECT 1 FROM players WHERE name = ?").get(name)) throw bad("That player already exists");
   const r = db.prepare("INSERT INTO players (name, color) VALUES (?, ?)").run(name, color);
+  logChange(req, `Added player ${name}`);
   res.status(201).json(db.prepare("SELECT * FROM players WHERE id = ?").get(r.lastInsertRowid));
 }));
 
-app.put("/api/players/:id", wrap((req, res) => {
+admin.put("/players/:id", wrap((req, res) => {
   const name = String(req.body.name || "").trim();
   const color = /^#[0-9a-f]{6}$/i.test(req.body.color || "") ? req.body.color : null;
   if (!name) throw bad("Name is required");
+  const before = playerName(req.params.id);
   db.prepare("UPDATE players SET name = ?, color = COALESCE(?, color) WHERE id = ?").run(name, color, req.params.id);
+  logChange(req, before === name ? `Changed ${name}'s colour` : `Renamed player ${before} to ${name}`);
   res.json(db.prepare("SELECT * FROM players WHERE id = ?").get(req.params.id));
 }));
 
-app.delete("/api/players/:id", wrap((req, res) => {
+admin.delete("/players/:id", wrap((req, res) => {
+  const name = playerName(req.params.id);
+  const plays = db.prepare("SELECT COUNT(*) AS n FROM play_players WHERE player_id = ?").get(req.params.id).n;
   db.prepare("DELETE FROM players WHERE id = ?").run(req.params.id);
+  logChange(req, `Deleted player ${name}${plays ? ` and their results in ${plays} play${plays === 1 ? "" : "s"}` : ""}`);
   res.status(204).end();
 }));
 
@@ -85,7 +176,7 @@ function applyBggInfo(game, info) {
 
 // All games, base games and expansions alike. Expansions have parent_id set;
 // their "plays" count is how many plays they were used in.
-app.get("/api/games", wrap((req, res) => {
+admin.get("/games", wrap((req, res) => {
   res.json(db.prepare(`
     SELECT g.*,
       CASE WHEN g.parent_id IS NULL
@@ -116,7 +207,7 @@ function resolveParent(body) {
   return null;
 }
 
-app.post("/api/games", wrap((req, res) => {
+admin.post("/games", wrap((req, res) => {
   const g = {};
   for (const f of GAME_FIELDS) g[f] = req.body[f] === "" || req.body[f] === undefined ? null : req.body[f];
   g.name = String(g.name || "").trim();
@@ -133,6 +224,7 @@ app.post("/api/games", wrap((req, res) => {
   const r = db.prepare(
     `INSERT INTO games (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`
   ).run(...GAME_FIELDS.map((f) => g[f]), parentId, parseEdition(req.body.edition));
+  logChange(req, parentId ? `Added expansion ${g.name} to ${gameName(parentId)}` : `Added game ${g.name}`);
   res.status(201).json(db.prepare("SELECT * FROM games WHERE id = ?").get(r.lastInsertRowid));
 }));
 
@@ -158,12 +250,13 @@ function parseImageUrl(v) {
 }
 
 // Edit a game's or an expansion's name, release year and (optionally) image link.
-app.put("/api/games/:id", wrap((req, res) => {
+admin.put("/games/:id", wrap((req, res) => {
   const game = db.prepare("SELECT id, image FROM games WHERE id = ?").get(req.params.id);
   if (!game) return res.status(404).json({ error: "That game no longer exists" });
   const name = String(req.body.name || "").trim();
   if (!name) throw bad("Name is required");
   const year = parseYear(req.body.year);
+  const before = gameName(game.id);
   tx(() => {
     db.prepare("UPDATE games SET name = ?, year = ? WHERE id = ?").run(name, year, game.id);
     if ("edition" in req.body) {
@@ -177,30 +270,36 @@ app.put("/api/games/:id", wrap((req, res) => {
       }
     }
   });
+  logChange(req, before === name ? `Edited game ${name}` : `Edited game ${before}, now ${name}`);
   res.json(db.prepare("SELECT * FROM games WHERE id = ?").get(game.id));
 }));
 
-app.delete("/api/games/:id", wrap((req, res) => {
+admin.delete("/games/:id", wrap((req, res) => {
   const ids = [Number(req.params.id), ...db.prepare("SELECT id FROM games WHERE parent_id = ?").all(req.params.id).map((r) => r.id)];
+  const name = gameName(req.params.id);
+  const plays = db.prepare("SELECT COUNT(*) AS n FROM plays WHERE game_id = ?").get(req.params.id).n;
   db.prepare("DELETE FROM games WHERE id = ?").run(req.params.id); // expansions cascade
+  logChange(req, `Deleted ${name}${ids.length > 1 ? ` with ${ids.length - 1} expansion${ids.length === 2 ? "" : "s"}` : ""}`
+    + `${plays ? ` and its ${plays} logged play${plays === 1 ? "" : "s"}` : ""}`);
   ids.forEach(clearCover);
   res.status(204).end();
 }));
 
 // Re-fetch info from BoardGameGeek for a game already in the collection.
-app.post("/api/games/:id/refresh", wrap(async (req, res) => {
+admin.post("/games/:id/refresh", wrap(async (req, res) => {
   const game = db.prepare("SELECT * FROM games WHERE id = ?").get(req.params.id);
   if (!game?.bgg_id) throw bad("This game is not linked to BoardGameGeek");
   const info = await bgg.thing(game.bgg_id);
   if (!info) throw bad("Not found on BoardGameGeek");
   applyBggInfo(game, info);
+  logChange(req, `Refreshed ${game.name} from BoardGameGeek`);
   res.json(db.prepare("SELECT * FROM games WHERE id = ?").get(game.id));
 }));
 
 // ---------- Linking hand-added games to BoardGameGeek ----------
 
 // Find likely BGG entries for one of our games. ?q= searches with a different name.
-app.get("/api/bgg/match/:id", wrap(async (req, res) => {
+admin.get("/bgg/match/:id", wrap(async (req, res) => {
   const game = db.prepare("SELECT id, name, year, parent_id FROM games WHERE id = ?").get(req.params.id);
   if (!game) return res.status(404).json({ error: "That game no longer exists" });
   const base = game.parent_id ? db.prepare("SELECT name FROM games WHERE id = ?").get(game.parent_id) : null;
@@ -227,7 +326,7 @@ app.get("/api/bgg/match/:id", wrap(async (req, res) => {
 }));
 
 // Link several games at once: { links: [{ game_id, bgg_id }] }.
-app.post("/api/games/link", wrap(async (req, res) => {
+admin.post("/games/link", wrap(async (req, res) => {
   const links = (Array.isArray(req.body.links) ? req.body.links : []).slice(0, 100)
     .map((l) => ({ game_id: Number(l.game_id), bgg_id: Number(l.bgg_id) }))
     .filter((l) => l.game_id && l.bgg_id);
@@ -247,17 +346,18 @@ app.post("/api/games/link", wrap(async (req, res) => {
       linked.push(l.game_id);
     }
   }
+  if (linked.length) logChange(req, `Linked ${linked.map(gameName).join(", ")} to BoardGameGeek`);
   res.json({ linked, failed });
 }));
 
 // ---------- BoardGameGeek lookup ----------
-app.get("/api/bgg/search", wrap(async (req, res) => {
+admin.get("/bgg/search", wrap(async (req, res) => {
   const q = String(req.query.q || "").trim();
   if (q.length < 2) return res.json([]);
   res.json(await bgg.search(q));
 }));
 
-app.get("/api/bgg/thing/:id", wrap(async (req, res) => {
+admin.get("/bgg/thing/:id", wrap(async (req, res) => {
   const info = await bgg.thing(req.params.id);
   if (!info) return res.status(404).json({ error: "Not found on BoardGameGeek" });
   res.json(info);
@@ -279,7 +379,7 @@ function playsWithPlayers(rows) {
   }));
 }
 
-app.get("/api/plays", wrap((req, res) => {
+admin.get("/plays", wrap((req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 500);
   const rows = db.prepare(`
     SELECT p.*, g.name AS game_name, g.thumbnail FROM plays p JOIN games g ON g.id = p.game_id
@@ -324,7 +424,7 @@ function savePlayPlayers(playId, players) {
   }
 }
 
-app.post("/api/plays", wrap((req, res) => {
+admin.post("/plays", wrap((req, res) => {
   const play = validatePlay(req.body);
   const id = tx(() => {
     const r = db.prepare("INSERT INTO plays (game_id, played_at, notes, duration_min) VALUES (?, ?, ?, ?)")
@@ -333,27 +433,57 @@ app.post("/api/plays", wrap((req, res) => {
     savePlayExpansions(r.lastInsertRowid, play.expansions);
     return r.lastInsertRowid;
   });
+  logChange(req, `Logged ${describePlay(id)}`);
   res.status(201).json({ id: Number(id) });
 }));
 
-app.put("/api/plays/:id", wrap((req, res) => {
+admin.put("/plays/:id", wrap((req, res) => {
   const id = Number(req.params.id);
   if (!db.prepare("SELECT 1 FROM plays WHERE id = ?").get(id)) {
     return res.status(404).json({ error: "That play no longer exists" });
   }
   const play = validatePlay(req.body);
+  const before = describePlay(id);
   tx(() => {
     db.prepare("UPDATE plays SET game_id = ?, played_at = ?, notes = ?, duration_min = ? WHERE id = ?")
       .run(play.game_id, play.played_at, play.notes, play.duration, id);
     savePlayPlayers(id, play.players);
     savePlayExpansions(id, play.expansions);
   });
+  const after = describePlay(id);
+  logChange(req, before === after ? `Edited ${after}` : `Edited ${before}, now ${after}`);
   res.json({ id });
 }));
 
-app.delete("/api/plays/:id", wrap((req, res) => {
+admin.delete("/plays/:id", wrap((req, res) => {
+  const what = describePlay(req.params.id);
   db.prepare("DELETE FROM plays WHERE id = ?").run(req.params.id);
+  logChange(req, `Deleted ${what}`);
   res.status(204).end();
+}));
+
+// ---------- History and backups (manage page) ----------
+admin.get("/changes", wrap((req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 200, 1000);
+  res.json(db.prepare("SELECT * FROM changes ORDER BY id DESC LIMIT ?").all(limit));
+}));
+
+admin.get("/backups", wrap((req, res) => {
+  res.json({ keep_days: backup.KEEP_DAYS, backups: backup.list() });
+}));
+
+// A copy made right now.
+admin.get("/backup", wrap((req, res) => {
+  const file = backup.snapshot();
+  const stamp = new Date().toLocaleString("sv-SE").replace(/[: ]/g, (c) => (c === " " ? "-" : "")).slice(0, 15);
+  logChange(req, "Downloaded a backup");
+  res.download(file, `boardgames-${stamp}.db`, () => fs.rmSync(path.dirname(file), { recursive: true, force: true }));
+}));
+
+admin.get("/backups/:name", wrap((req, res) => {
+  const file = backup.file(req.params.name);
+  if (!file) return res.status(404).json({ error: "No such backup" });
+  res.download(file, req.params.name);
 }));
 
 // ---------- Stats for the dashboard ----------
@@ -517,7 +647,7 @@ function clearCover(id) {
   for (const f of [`${id}.img`, `${id}.img.type`]) fs.rmSync(path.join(COVER_DIR, f), { force: true });
 }
 
-// ---------- Collection browser (read-only, for guests) ----------
+// ---------- Collection browser ----------
 
 // Champion of a game = most wins, ties broken by win rate.
 function championOf(gameId) {
@@ -529,7 +659,9 @@ function championOf(gameId) {
     ORDER BY wins DESC, CAST(wins AS REAL) / plays DESC, pl.name LIMIT 1`).get(gameId) || null;
 }
 
-app.get("/api/collection", wrap((req, res) => {
+// Two versions: /api/public/ for everyone (the games and how often they're played, nothing about
+// players), and /api/collection for those who may see the stats.
+const collectionList = (full) => wrap((req, res) => {
   const games = db.prepare(`
     SELECT g.id, g.name, g.year, g.edition, g.bgg_id, g.image, g.thumbnail, g.min_players, g.max_players,
            g.playing_time, g.min_age, g.rating, g.weight, g.categories, g.mechanics, g.types, g.designers, g.created_at,
@@ -542,13 +674,15 @@ app.get("/api/collection", wrap((req, res) => {
     ORDER BY COALESCE(year, 9999), name COLLATE NOCASE`).all();
   for (const g of games) {
     g.expansions = exps.filter((x) => x.parent_id === g.id).map(({ parent_id, ...x }) => x);
-    g.champion = championOf(g.id);
+    if (full) g.champion = championOf(g.id);
   }
   res.json(games);
-}));
+});
+app.get("/api/collection", collectionList(true));
+app.get("/api/public/collection", collectionList(false));
 
 // Everything about one game: details, expansions, and how we've done at it.
-app.get("/api/collection/:id", wrap((req, res) => {
+const collectionGame = (full) => wrap((req, res) => {
   const game = db.prepare("SELECT * FROM games WHERE id = ? AND parent_id IS NULL").get(req.params.id);
   if (!game) return res.status(404).json({ error: "That game isn't in the collection" });
   game.expansions = db.prepare(`
@@ -567,6 +701,7 @@ app.get("/api/collection/:id", wrap((req, res) => {
   game.plays = summary.plays;
   game.first_played = summary.first_played;
   game.last_played = summary.last_played;
+  if (!full) return res.json(game);
   game.champion = championOf(game.id);
   game.results = db.prepare(`
     SELECT pl.id, pl.name, pl.color, COUNT(*) AS plays, SUM(pp.winner) AS wins,
@@ -577,9 +712,12 @@ app.get("/api/collection/:id", wrap((req, res) => {
   game.recent = playsWithPlayers(db.prepare(`
     SELECT p.* FROM plays p WHERE p.game_id = ? ORDER BY p.played_at DESC, p.id DESC LIMIT 5`).all(game.id));
   res.json(game);
-}));
+});
+app.get("/api/collection/:id", collectionGame(true));
+app.get("/api/public/collection/:id", collectionGame(false));
 
 app.get("/healthz", (req, res) => res.send("ok"));
 
 const PORT = Number(process.env.PORT) || 8080;
+backup.start();
 app.listen(PORT, "0.0.0.0", () => console.log(`Boardgame stats listening on http://0.0.0.0:${PORT}`));

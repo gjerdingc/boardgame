@@ -1,6 +1,20 @@
 // Read-only collection browser for guests and family.
 const filters = { q: "", players: "", time: "", type: "", sort: "rating" };
 let games = [];
+// Who is looking: null when the stats are off limits (not signed in, away from home).
+let me = null;
+const collectionApi = () => (me ? "api/collection" : "api/public/collection");
+
+// The header button: the scoreboard for those who may see it, otherwise a way to sign in.
+function renderAccount() {
+  const el = $("#account");
+  if (!me) {
+    el.innerHTML = `<a class="btn" href="${signInUrl("/")}">Sign in for stats</a>`;
+    return;
+  }
+  el.innerHTML = `${me.email ? `<a class="btn ghost small" href="${signOutUrl()}" title="Signed in as ${esc(me.email)}">Sign out</a>` : ""}
+    <a class="btn ghost" href="./">Scoreboard →</a>`;
+}
 
 const ICONS = {
   players: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.4 3-5.4 6-5.4s5.4 2 6 5.4"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 13.7c2.3.2 4 1.8 4.5 4.6"/></svg>`,
@@ -128,7 +142,8 @@ function detail(g) {
         <p class="muted">Played ${g.plays} time${g.plays === 1 ? "" : "s"}${g.last_played ? `, most recently ${relDate(g.last_played).toLowerCase()}` : ""}.
         ${g.timed_plays ? `It usually takes us about <b>${fmtDuration(g.avg_duration)}</b>${g.playing_time ? ` (the box says ${timeText(g.playing_time)})` : ""}${g.timed_plays > 1 && g.fastest !== g.longest ? `, from ${fmtDuration(g.fastest)} to ${fmtDuration(g.longest)}` : ""}.` : ""}
         ${g.champion ? `Reigning champion: <b class="champ-name"><span class="dot" style="background:${esc(g.champion.color)}"></span>${esc(g.champion.name)}</b> ♛` : ""}</p>
-        <div class="record-list">${g.results.map((r) => `
+        ${g.results ? "" : `<p class="muted"><a href="${signInUrl()}">Sign in</a> to see who wins.</p>`}
+        <div class="record-list">${(g.results || []).map((r) => `
           <div class="record">
             <span class="pname"><span class="dot" style="background:${esc(r.color)}"></span>${esc(r.name)}</span>
             <span class="wl-bar"><i style="width:${Math.round((r.wins / r.plays) * 100)}%"></i></span>
@@ -185,7 +200,7 @@ async function openGame(id) {
   $("#modal-body").innerHTML = `<div class="empty">Loading…</div>`;
   if (!modal.open) modal.showModal();
   try {
-    const g = await api(`api/collection/${id}`);
+    const g = await api(`${collectionApi()}/${id}`);
     $("#modal-body").innerHTML = detail(g);
     document.title = `${g.name} · Our Games`;
     const desc = $("#desc");
@@ -258,7 +273,9 @@ window.addEventListener("hashchange", syncFromHash);
 
 (async function init() {
   try {
-    games = await api("api/collection");
+    me = await whoAmI();
+    renderAccount();
+    games = await api(collectionApi());
     const exps = games.reduce((n, g) => n + g.expansions.length, 0);
     $("#subtitle").textContent = `${games.length} game${games.length === 1 ? "" : "s"}${exps ? ` and ${exps} expansion${exps === 1 ? "" : "s"}` : ""} on the shelf · tap one to learn more`;
     // Type filter lists only the types that are in the collection.
