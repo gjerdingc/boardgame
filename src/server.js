@@ -3,6 +3,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { db, tx, DATA_DIR } = require("./db");
 const bgg = require("./bgg");
+const backup = require("./backup");
 const { rankCandidates } = require("./bggMatch");
 
 const app = express();
@@ -61,6 +62,25 @@ admin.use((req, res, next) => {
 });
 app.use("/api/admin", admin);
 
+// ---------- Change log ----------
+function logChange(req, summary) {
+  db.prepare("INSERT INTO changes (email, summary) VALUES (?, ?)").run(userOf(req), summary);
+}
+
+const gameName = (id) => db.prepare("SELECT name FROM games WHERE id = ?").get(id)?.name || `game #${id}`;
+const playerName = (id) => db.prepare("SELECT name FROM players WHERE id = ?").get(id)?.name || `player #${id}`;
+
+// "Wingspan on 2026-11-18 (♛ Kari 80, Ola 60)": enough to log the play again by hand.
+function describePlay(id) {
+  const p = db.prepare("SELECT p.played_at, g.name FROM plays p JOIN games g ON g.id = p.game_id WHERE p.id = ?").get(id);
+  if (!p) return `play #${id}`;
+  const who = db.prepare(`
+    SELECT pl.name, pp.winner, pp.score FROM play_players pp JOIN players pl ON pl.id = pp.player_id
+    WHERE pp.play_id = ? ORDER BY pp.winner DESC, pl.name`).all(id)
+    .map((x) => `${x.winner ? "♛ " : ""}${x.name}${x.score != null ? ` ${x.score}` : ""}`);
+  return `${p.name} on ${p.played_at} (${who.join(", ")})`;
+}
+
 app.get("/api/me", (req, res) => {
   res.json({ email: userOf(req), admin: isAdmin(req) });
 });
@@ -104,6 +124,7 @@ admin.post("/players", wrap((req, res) => {
   if (!name) throw bad("Name is required");
   if (db.prepare("SELECT 1 FROM players WHERE name = ?").get(name)) throw bad("That player already exists");
   const r = db.prepare("INSERT INTO players (name, color) VALUES (?, ?)").run(name, color);
+  logChange(req, `Added player ${name}`);
   res.status(201).json(db.prepare("SELECT * FROM players WHERE id = ?").get(r.lastInsertRowid));
 }));
 
@@ -111,12 +132,17 @@ admin.put("/players/:id", wrap((req, res) => {
   const name = String(req.body.name || "").trim();
   const color = /^#[0-9a-f]{6}$/i.test(req.body.color || "") ? req.body.color : null;
   if (!name) throw bad("Name is required");
+  const before = playerName(req.params.id);
   db.prepare("UPDATE players SET name = ?, color = COALESCE(?, color) WHERE id = ?").run(name, color, req.params.id);
+  logChange(req, before === name ? `Changed ${name}'s colour` : `Renamed player ${before} to ${name}`);
   res.json(db.prepare("SELECT * FROM players WHERE id = ?").get(req.params.id));
 }));
 
 admin.delete("/players/:id", wrap((req, res) => {
+  const name = playerName(req.params.id);
+  const plays = db.prepare("SELECT COUNT(*) AS n FROM play_players WHERE player_id = ?").get(req.params.id).n;
   db.prepare("DELETE FROM players WHERE id = ?").run(req.params.id);
+  logChange(req, `Deleted player ${name}${plays ? ` and their results in ${plays} play${plays === 1 ? "" : "s"}` : ""}`);
   res.status(204).end();
 }));
 
@@ -198,6 +224,7 @@ admin.post("/games", wrap((req, res) => {
   const r = db.prepare(
     `INSERT INTO games (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`
   ).run(...GAME_FIELDS.map((f) => g[f]), parentId, parseEdition(req.body.edition));
+  logChange(req, parentId ? `Added expansion ${g.name} to ${gameName(parentId)}` : `Added game ${g.name}`);
   res.status(201).json(db.prepare("SELECT * FROM games WHERE id = ?").get(r.lastInsertRowid));
 }));
 
@@ -229,6 +256,7 @@ admin.put("/games/:id", wrap((req, res) => {
   const name = String(req.body.name || "").trim();
   if (!name) throw bad("Name is required");
   const year = parseYear(req.body.year);
+  const before = gameName(game.id);
   tx(() => {
     db.prepare("UPDATE games SET name = ?, year = ? WHERE id = ?").run(name, year, game.id);
     if ("edition" in req.body) {
@@ -242,12 +270,17 @@ admin.put("/games/:id", wrap((req, res) => {
       }
     }
   });
+  logChange(req, before === name ? `Edited game ${name}` : `Edited game ${before}, now ${name}`);
   res.json(db.prepare("SELECT * FROM games WHERE id = ?").get(game.id));
 }));
 
 admin.delete("/games/:id", wrap((req, res) => {
   const ids = [Number(req.params.id), ...db.prepare("SELECT id FROM games WHERE parent_id = ?").all(req.params.id).map((r) => r.id)];
+  const name = gameName(req.params.id);
+  const plays = db.prepare("SELECT COUNT(*) AS n FROM plays WHERE game_id = ?").get(req.params.id).n;
   db.prepare("DELETE FROM games WHERE id = ?").run(req.params.id); // expansions cascade
+  logChange(req, `Deleted ${name}${ids.length > 1 ? ` with ${ids.length - 1} expansion${ids.length === 2 ? "" : "s"}` : ""}`
+    + `${plays ? ` and its ${plays} logged play${plays === 1 ? "" : "s"}` : ""}`);
   ids.forEach(clearCover);
   res.status(204).end();
 }));
@@ -259,6 +292,7 @@ admin.post("/games/:id/refresh", wrap(async (req, res) => {
   const info = await bgg.thing(game.bgg_id);
   if (!info) throw bad("Not found on BoardGameGeek");
   applyBggInfo(game, info);
+  logChange(req, `Refreshed ${game.name} from BoardGameGeek`);
   res.json(db.prepare("SELECT * FROM games WHERE id = ?").get(game.id));
 }));
 
@@ -312,6 +346,7 @@ admin.post("/games/link", wrap(async (req, res) => {
       linked.push(l.game_id);
     }
   }
+  if (linked.length) logChange(req, `Linked ${linked.map(gameName).join(", ")} to BoardGameGeek`);
   res.json({ linked, failed });
 }));
 
@@ -398,6 +433,7 @@ admin.post("/plays", wrap((req, res) => {
     savePlayExpansions(r.lastInsertRowid, play.expansions);
     return r.lastInsertRowid;
   });
+  logChange(req, `Logged ${describePlay(id)}`);
   res.status(201).json({ id: Number(id) });
 }));
 
@@ -407,18 +443,47 @@ admin.put("/plays/:id", wrap((req, res) => {
     return res.status(404).json({ error: "That play no longer exists" });
   }
   const play = validatePlay(req.body);
+  const before = describePlay(id);
   tx(() => {
     db.prepare("UPDATE plays SET game_id = ?, played_at = ?, notes = ?, duration_min = ? WHERE id = ?")
       .run(play.game_id, play.played_at, play.notes, play.duration, id);
     savePlayPlayers(id, play.players);
     savePlayExpansions(id, play.expansions);
   });
+  const after = describePlay(id);
+  logChange(req, before === after ? `Edited ${after}` : `Edited ${before}, now ${after}`);
   res.json({ id });
 }));
 
 admin.delete("/plays/:id", wrap((req, res) => {
+  const what = describePlay(req.params.id);
   db.prepare("DELETE FROM plays WHERE id = ?").run(req.params.id);
+  logChange(req, `Deleted ${what}`);
   res.status(204).end();
+}));
+
+// ---------- History and backups (manage page) ----------
+admin.get("/changes", wrap((req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 200, 1000);
+  res.json(db.prepare("SELECT * FROM changes ORDER BY id DESC LIMIT ?").all(limit));
+}));
+
+admin.get("/backups", wrap((req, res) => {
+  res.json({ keep_days: backup.KEEP_DAYS, backups: backup.list() });
+}));
+
+// A copy made right now.
+admin.get("/backup", wrap((req, res) => {
+  const file = backup.snapshot();
+  const stamp = new Date().toLocaleString("sv-SE").replace(/[: ]/g, (c) => (c === " " ? "-" : "")).slice(0, 15);
+  logChange(req, "Downloaded a backup");
+  res.download(file, `boardgames-${stamp}.db`, () => fs.rmSync(path.dirname(file), { recursive: true, force: true }));
+}));
+
+admin.get("/backups/:name", wrap((req, res) => {
+  const file = backup.file(req.params.name);
+  if (!file) return res.status(404).json({ error: "No such backup" });
+  res.download(file, req.params.name);
 }));
 
 // ---------- Stats for the dashboard ----------
@@ -654,4 +719,5 @@ app.get("/api/public/collection/:id", collectionGame(false));
 app.get("/healthz", (req, res) => res.send("ok"));
 
 const PORT = Number(process.env.PORT) || 8080;
+backup.start();
 app.listen(PORT, "0.0.0.0", () => console.log(`Boardgame stats listening on http://0.0.0.0:${PORT}`));

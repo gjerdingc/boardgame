@@ -21,6 +21,7 @@ document.querySelectorAll(".tabs button").forEach((b) =>
     document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.id === `tab-${b.dataset.tab}`));
     history.replaceState(null, "", `#${b.dataset.tab}`);
+    if (b.dataset.tab === "history") loadHistory().catch((err) => toast(err.message, true));
   })
 );
 const initialTab = location.hash.slice(1);
@@ -522,3 +523,25 @@ whoAmI().then((me) => {
     document.getElementById("whoami").innerHTML = `${esc(me.email)} · <a href="${signOutUrl()}">Sign out</a>`;
   }
 });
+
+// ---------- History ----------
+const fmtBytes = (n) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+
+async function loadHistory() {
+  const [changes, b] = await Promise.all([api("api/admin/changes"), api("api/admin/backups")]);
+  document.getElementById("backup-note").textContent = `last ${b.keep_days} days kept`;
+  document.getElementById("backups-list").innerHTML = b.backups.length
+    ? b.backups.map((x) => `
+      <div class="item">
+        <div class="grow"><b>${esc(fmtDate(x.name.slice(11, 21)))}</b><small class="muted">${fmtBytes(x.size)}</small></div>
+        <a class="btn ghost small" href="api/admin/backups/${encodeURIComponent(x.name)}" download>Download</a>
+      </div>`).join("")
+    : `<div class="muted">The first one is made when the app starts.</div>`;
+  document.getElementById("changes-list").innerHTML = changes.length
+    ? changes.map((c) => `
+      <div class="item">
+        <div class="grow"><b style="white-space:normal">${esc(c.summary)}</b>
+          <small class="muted">${esc(new Date(c.at.replace(" ", "T") + "Z").toLocaleString())}${c.email ? ` · ${esc(c.email)}` : ""}</small></div>
+      </div>`).join("")
+    : `<div class="muted">Nothing changed yet.</div>`;
+}

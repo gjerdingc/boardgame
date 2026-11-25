@@ -27,6 +27,7 @@
       <button class="active" data-tab="plays">Log a play</button>
       <button data-tab="games">Games</button>
       <button data-tab="players">Players</button>
+      <button data-tab="history">History</button>
     </nav>
 
     <!-- Log a play -->
@@ -102,6 +103,20 @@
       <section class="panel">
         <h2>Players</h2>
         <div class="list" id="players-list"></div>
+      </section>
+    </section>
+
+    <!-- History and backups -->
+    <section class="tab" id="tab-history">
+      <section class="panel">
+        <h2>Backups <small id="backup-note"></small></h2>
+        <p class="muted">A copy of everything is saved every night. Download one to keep it somewhere else too.</p>
+        <div class="row" style="gap:8px;margin:12px 0"><a class="btn" href="api/admin/backup" download>Download a backup now</a></div>
+        <div class="list" id="backups-list"></div>
+      </section>
+      <section class="panel">
+        <h2>Changes <small>newest first</small></h2>
+        <div class="list" id="changes-list"></div>
       </section>
     </section>
   </main>
