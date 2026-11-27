@@ -24,10 +24,11 @@ const ICONS = {
 
 function playersText(g) {
   if (!g.min_players) return null;
-  return g.max_players && g.max_players !== g.min_players ? `${g.min_players}–${g.max_players}` : `${g.min_players}`;
+  return esc(g.max_players && g.max_players !== g.min_players ? `${g.min_players}–${g.max_players}` : `${g.min_players}`);
 }
 
 function timeText(min) {
+  min = Number(min);
   if (!min) return null;
   if (min < 90) return `${min} min`;
   const h = min / 60;
@@ -84,8 +85,8 @@ function card(g) {
   const facts = [
     playersText(g) && `<span>${ICONS.players}${playersText(g)}</span>`,
     g.playing_time && `<span>${ICONS.time}${timeText(g.playing_time)}</span>`,
-    g.weight ? `<span class="muted" title="Complexity ${g.weight.toFixed(1)} of 5">${weightText(g.weight)}</span>`
-      : g.min_age && `<span class="muted">Age ${g.min_age}+</span>`,
+    g.weight ? `<span class="muted" title="Complexity ${Number(g.weight).toFixed(1)} of 5">${weightText(g.weight)}</span>`
+      : g.min_age && `<span class="muted">Age ${esc(g.min_age)}+</span>`,
   ].filter(Boolean).join("");
   return `
     <a class="shelf-card" href="#game-${g.id}" aria-label="${esc(g.name)}">
@@ -95,7 +96,7 @@ function card(g) {
       </div>
       <div class="game-info">
         <h3>${esc(g.name)}</h3>
-        <div class="sub">${[g.year, g.edition && esc(editionLabel(g.edition))].filter(Boolean).join(" · ")}</div>
+        <div class="sub">${[g.year && esc(g.year), g.edition && esc(editionLabel(g.edition))].filter(Boolean).join(" · ")}</div>
         ${facts ? `<div class="facts">${facts}</div>` : ""}
         ${g.expansions.length ? `<div class="exp-count">+ ${g.expansions.length} expansion${g.expansions.length === 1 ? "" : "s"}</div>` : ""}
       </div>
@@ -130,9 +131,9 @@ function detail(g) {
   const facts = [
     ["Players", playersText(g)],
     ["Time", timeText(g.playing_time)],
-    ["Age", g.min_age ? `${g.min_age}+` : null],
-    ["Complexity", weightText(g.weight) && `${weightText(g.weight)} <small>${g.weight.toFixed(1)}/5</small>`],
-    ["BGG rating", g.rating ? `${g.rating.toFixed(1)} <small>/10</small>` : null],
+    ["Age", g.min_age ? `${esc(g.min_age)}+` : null],
+    ["Complexity", weightText(g.weight) && `${weightText(g.weight)} <small>${Number(g.weight).toFixed(1)}/5</small>`],
+    ["BGG rating", g.rating ? `${Number(g.rating).toFixed(1)} <small>/10</small>` : null],
   ].filter(([, v]) => v);
 
   const record = g.plays
@@ -182,9 +183,9 @@ function detail(g) {
       <div class="modal-cover ${g.image || g.thumbnail ? "" : "placeholder"}" ${coverStyle(g)}>${g.image || g.thumbnail ? "" : initial(g.name)}</div>
       <div class="modal-title">
         <h2 id="modal-title">${esc(g.name)}</h2>
-        <div class="sub">${[g.year, g.edition && `<span class="edition-tag">${esc(editionLabel(g.edition))}</span>`].filter(Boolean).join(" ")}</div>
+        <div class="sub">${[g.year && esc(g.year), g.edition && `<span class="edition-tag">${esc(editionLabel(g.edition))}</span>`].filter(Boolean).join(" ")}</div>
         ${facts.length ? `<dl class="fact-grid">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` : ""}
-        ${g.bgg_id ? `<a class="bgg-link" href="https://boardgamegeek.com/boardgame/${g.bgg_id}" target="_blank" rel="noopener">See it on BoardGameGeek ↗</a>` : ""}
+        ${g.bgg_id ? `<a class="bgg-link" href="https://boardgamegeek.com/boardgame/${Number(g.bgg_id)}" target="_blank" rel="noopener">See it on BoardGameGeek ↗</a>` : ""}
       </div>
     </div>
     <div class="modal-sections">

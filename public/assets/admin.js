@@ -234,7 +234,7 @@ function gameMeta(g) {
 }
 
 function gameButtons(g) {
-  return `${g.bgg_id ? `<a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${g.bgg_id}" target="_blank" rel="noopener">BGG</a>
+  return `${g.bgg_id ? `<a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${Number(g.bgg_id)}" target="_blank" rel="noopener">BGG</a>
     <button class="btn ghost small" data-refresh-game="${g.id}">Refresh</button>` : ""}
     <button class="btn ghost small" data-edit-game="${g.id}">Edit</button>
     <button class="btn danger small" data-del-game="${g.id}">Delete</button>`;
@@ -420,7 +420,7 @@ $("#bgg-form").addEventListener("submit", async (e) => {
         <div class="item">
           <div class="grow"><b>${esc(r.name)}${r.year ? ` <span class="muted" style="font-weight:400">(${r.year})</span>` : ""}</b>
             ${r.is_expansion ? `<div class="muted" style="font-size:.8rem">Expansion — added under its base game</div>` : ""}</div>
-          <a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${r.bgg_id}" target="_blank" rel="noopener">View</a>
+          <a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${Number(r.bgg_id)}" target="_blank" rel="noopener">View</a>
           ${owned.has(r.bgg_id)
             ? `<span class="muted" style="font-size:.85rem">In collection</span>`
             : `<button class="btn small" data-add-bgg="${r.bgg_id}">Add</button>`}
@@ -516,7 +516,13 @@ $("#players-list").addEventListener("change", async (e) => {
   loadAll();
 });
 
-loadAll().catch((err) => toast(err.message, true));
+loadAll().catch((err) => {
+  toast(err.message, true);
+  // Managing needs a sign-in (ADMIN_SIGN_IN): offer it.
+  if (err.status === 401) {
+    document.getElementById("whoami").innerHTML = `<a class="btn" href="${signInUrl("/admin")}">Sign in to manage</a>`;
+  }
+});
 
 whoAmI().then((me) => {
   if (me?.email) {

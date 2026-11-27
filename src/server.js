@@ -5,9 +5,15 @@ const { db, tx, DATA_DIR } = require("./db");
 const bgg = require("./bgg");
 const backup = require("./backup");
 const { rankCandidates } = require("./bggMatch");
+const covers = require("./covers");
 
 const app = express();
 app.set("trust proxy", 1);
+// The gateway's path rules match paths case-sensitively, so the app must too: otherwise
+// /API/ADMIN/... would miss the gateway's /api/admin/ rules and still reach the admin routes.
+// Set before the first route, as Express reads it when it creates its router.
+app.set("case sensitive routing", true);
+app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
@@ -45,6 +51,10 @@ const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
 // Anyone who reaches /admin and /api/admin/ may add and change things: at home everyone, guests
 // too, may log a game. The gateway must keep those paths away from the internet (see the README).
 // The email of whoever is signed in, if anyone, goes into the change log.
+// ADMIN_SIGN_IN=required (the default): /api/admin/ also needs a signed-in user, so being at home
+// is not enough on its own. ADMIN_SIGN_IN=optional goes back to letting anyone the gateway lets
+// through change things, without signing in.
+const ADMIN_SIGN_IN = (process.env.ADMIN_SIGN_IN || "required").trim().toLowerCase() !== "optional";
 // For running locally without the gateway: pretend to be this user. Ignored in production.
 const DEV_USER_EMAIL = process.env.NODE_ENV === "production" ? "" : (process.env.DEV_USER_EMAIL || "").trim().toLowerCase();
 
@@ -58,8 +68,31 @@ app.use((req, res, next) => {
   res.status(405).json({ error: "Not allowed" });
 });
 
-const admin = express.Router();
+// A browser request from another site (or another app under the same domain) never reaches the
+// admin API: no cross-site request forgery, not even with GET (backups) or a body-less POST.
+// Browsers say where a request comes from in Sec-Fetch-Site, older ones in Origin. A request
+// with neither is not from a browser page, so it can't be forged by one.
+function fromThisSite(req) {
+  const site = req.get("Sec-Fetch-Site");
+  if (site) return site === "same-origin" || site === "none";
+  const origin = req.get("Origin");
+  if (origin) {
+    try {
+      return new URL(origin).host === req.get("Host");
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+const admin = express.Router({ caseSensitive: true });
 app.use("/api/admin", admin);
+admin.use((req, res, next) => {
+  if (!fromThisSite(req)) return res.status(403).json({ error: "Not allowed from another site" });
+  if (ADMIN_SIGN_IN && !userOf(req)) return res.status(401).json({ error: "Sign in to manage Game Night" });
+  next();
+});
 
 // ---------- Change log ----------
 function logChange(req, summary) {
@@ -89,7 +122,8 @@ const page = (file) => (req, res) => res.set("Cache-Control", "no-cache").sendFi
 app.get("/", page("index.html"));
 app.get(["/games", "/games.html"], page("games.html"));
 app.get(["/player", "/player.html"], page("player.html"));
-app.get(["/admin", "/admin.html"], page("admin.html"));
+// Only /admin: the gateway's rule for /admin covers /admin and /admin/..., not /admin.html.
+app.get("/admin", page("admin.html"));
 
 // ---------- Players ----------
 admin.get("/players", wrap((req, res) => {
@@ -190,7 +224,11 @@ admin.post("/games", wrap((req, res) => {
   for (const f of GAME_FIELDS) g[f] = req.body[f] === "" || req.body[f] === undefined ? null : req.body[f];
   g.name = String(g.name || "").trim();
   if (!g.name) throw bad("Game name is required");
+  if (g.name.length > 200) throw bad("Game name is too long");
   g.year = parseYear(g.year);
+  // Numbers must be numbers: the pages put them into HTML as they are.
+  for (const [f, [min, max, int]] of Object.entries(NUMBER_FIELDS)) g[f] = parseNumber(g[f], f, min, max, int);
+  for (const f of TEXT_FIELDS) g[f] = g[f] == null ? null : String(g[f]).slice(0, f === "description" ? 20000 : 2000);
   g.image = parseImageUrl(g.image);
   g.thumbnail = g.thumbnail ? parseImageUrl(g.thumbnail) : g.image;
   if (g.bgg_id && db.prepare("SELECT 1 FROM games WHERE bgg_id = ?").get(g.bgg_id)) {
@@ -205,6 +243,27 @@ admin.post("/games", wrap((req, res) => {
   logChange(req, parentId ? `Added expansion ${g.name} to ${gameName(parentId)}` : `Added game ${g.name}`);
   res.status(201).json(db.prepare("SELECT * FROM games WHERE id = ?").get(r.lastInsertRowid));
 }));
+
+// Allowed range and whether it must be whole, for the number fields of a game.
+const NUMBER_FIELDS = {
+  bgg_id: [1, 1e9, true],
+  min_players: [0, 1000, true],
+  max_players: [0, 1000, true],
+  playing_time: [0, 100000, true],
+  min_age: [0, 120, true],
+  rating: [0, 10, false],
+  weight: [0, 5, false],
+};
+const TEXT_FIELDS = ["categories", "mechanics", "designers", "description", "types"];
+
+function parseNumber(v, field, min, max, int) {
+  if (v === "" || v == null) return null;
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
+  if (!Number.isFinite(n) || n < min || n > max || (int && !Number.isInteger(n))) {
+    throw bad(`${field.replace("_", " ")} must be a number`);
+  }
+  return n;
+}
 
 function parseYear(v) {
   if (v === "" || v == null) return null;
@@ -233,6 +292,7 @@ admin.put("/games/:id", wrap((req, res) => {
   if (!game) return res.status(404).json({ error: "That game no longer exists" });
   const name = String(req.body.name || "").trim();
   if (!name) throw bad("Name is required");
+  if (name.length > 200) throw bad("Name is too long");
   const year = parseYear(req.body.year);
   const before = gameName(game.id);
   tx(() => {
@@ -602,28 +662,23 @@ app.get("/api/players/:id/stats", wrap((req, res) => {
 }));
 
 // ---------- Cover images (cached locally so the dashboard works even if BGG is slow) ----------
-const COVER_DIR = path.join(DATA_DIR, "covers");
-fs.mkdirSync(COVER_DIR, { recursive: true });
-
+// Open to everyone, so src/covers.js only fetches pictures (no SVG) from public addresses.
 app.get("/covers/:id", wrap(async (req, res) => {
   const id = Number(req.params.id);
-  const file = path.join(COVER_DIR, `${id}.img`);
-  const send = () => res.set("Cache-Control", "public, max-age=86400").type(fs.readFileSync(file + ".type", "utf8")).sendFile(file);
-  if (fs.existsSync(file) && fs.existsSync(file + ".type")) return send();
-  const game = db.prepare("SELECT image, thumbnail FROM games WHERE id = ?").get(id);
-  const url = game?.image || game?.thumbnail;
-  if (!url || !/^https?:\/\//.test(url)) return res.status(404).end();
-  const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
-  const type = r.headers.get("content-type") || "";
-  if (!r.ok || !type.startsWith("image/")) return res.status(404).end();
-  fs.writeFileSync(file, Buffer.from(await r.arrayBuffer()));
-  fs.writeFileSync(file + ".type", type);
-  send();
+  if (!Number.isInteger(id) || id < 1) return res.status(404).end();
+  const cover = await covers.get(id, () => {
+    const game = db.prepare("SELECT image, thumbnail FROM games WHERE id = ?").get(id);
+    return game?.image || game?.thumbnail || null;
+  });
+  if (!cover) return res.status(404).end();
+  res.set({
+    "Cache-Control": "public, max-age=86400",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+  }).type(cover.type).sendFile(cover.file);
 }));
 
-function clearCover(id) {
-  for (const f of [`${id}.img`, `${id}.img.type`]) fs.rmSync(path.join(COVER_DIR, f), { force: true });
-}
+const clearCover = covers.clear;
 
 // ---------- Collection browser ----------
 

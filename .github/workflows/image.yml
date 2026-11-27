@@ -52,9 +52,16 @@ jobs:
           check 200 /games
           check 200 /api/public/collection
           check 200 /favicon.svg
-          # The admin pages are open in the app; the gateway keeps them off the internet
+          # Managing needs a signed-in user (the gateway sets X-Auth-Request-Email)
           check 200 /admin
-          check 200 /api/admin/players
+          check 401 /api/admin/players
+          check 200 /api/admin/players -H "X-Auth-Request-Email: smoke@example.com"
+          # Paths are case-sensitive, like the gateway's path rules
+          check 404 /API/ADMIN/players -H "X-Auth-Request-Email: smoke@example.com"
+          check 404 /admin.html
+          # Never from another site
+          check 403 /api/admin/players -H "X-Auth-Request-Email: smoke@example.com" -H "Sec-Fetch-Site: cross-site"
+          check 403 /api/admin/players -X POST -H "X-Auth-Request-Email: smoke@example.com" -H "Origin: https://evil.example"
           check 405 /api/me -X POST
           # The app runs as node, not root
           test "$(docker exec bg stat -c %U /proc/1)" = node

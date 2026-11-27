@@ -19,6 +19,9 @@ services:
       TZ: Europe/Oslo
       # BoardGameGeek API token (https://boardgamegeek.com/applications), set in the Portainer stack.
       BGG_TOKEN: ${BGG_TOKEN:-}
+      # required (default): managing needs a Google sign-in as well as being at home.
+      # optional: anyone the gateway lets reach /admin may change things (guests at home too).
+      ADMIN_SIGN_IN: ${ADMIN_SIGN_IN:-required}
       # How many daily backups to keep in /data/backups.
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
     # Data on the host under /opt/boardgame, as for every tool: one folder to copy and back up.

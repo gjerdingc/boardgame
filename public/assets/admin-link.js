@@ -92,7 +92,7 @@ function rowHtml(id) {
     pick = `
       ${r.candidates.length ? `<select data-link-pick="${id}" aria-label="BoardGameGeek match for ${esc(g.name)}">
         ${options}<option value="" ${row.pick ? "" : "selected"}>— Don't link —</option></select>` : ""}
-      ${row.pick ? `<a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${row.pick}" target="_blank" rel="noopener">View</a>` : ""}
+      ${row.pick ? `<a class="btn ghost small" href="https://boardgamegeek.com/boardgame/${Number(row.pick)}" target="_blank" rel="noopener">View</a>` : ""}
       ${r.confidence === "sure" && !row.showRetry
         ? `<button class="link-btn" type="button" data-link-show-retry="${id}">Wrong game?</button>`
         : `<form class="link-retry" data-link-retry="${id}">

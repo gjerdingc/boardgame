@@ -105,6 +105,14 @@ db.exec(`
   );
 `);
 
+// Number columns hold only numbers. Older versions stored whatever the form sent, and the pages
+// put these values into HTML as they are, so anything else is dropped.
+for (const col of ["bgg_id", "min_players", "max_players", "playing_time", "min_age", "rating", "weight"]) {
+  const r = db.prepare(`UPDATE games SET ${col} = NULL
+    WHERE ${col} IS NOT NULL AND typeof(${col}) NOT IN ('integer', 'real')`).run();
+  if (r.changes) console.log(`Cleared ${r.changes} value(s) in games.${col} that were not numbers`);
+}
+
 /** Run fn inside a transaction. */
 function tx(fn) {
   db.exec("BEGIN");
